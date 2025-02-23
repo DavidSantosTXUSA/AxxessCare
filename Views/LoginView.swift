@@ -1,9 +1,3 @@
-//  LoginView.swift
-//  healthapp
-//
-//  Created by David Santos on 2/22/25.
-//
-
 import SwiftUI
 import FirebaseAuth
 
@@ -148,6 +142,28 @@ struct CreateAccountView: View {
                     .frame(maxWidth: .infinity)
                     .background(Color.green)
                     .cornerRadius(10)
+            }
+            .padding(.horizontal)
+            
+            Button(action: {
+                isCreatingAccount = true
+            }) {
+                Text("Create Account")
+                    .foregroundColor(.blue)
+                    .padding()
+            }
+            .sheet(isPresented: $isCreatingAccount) {
+                CreateAccountView()
+            }
+            
+            if !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .foregroundColor(.red)
+            }
+            
+            if authViewModel.isAuthenticated {
+                Text("✅ Login Successful!")
+                    .foregroundColor(.green)
             }
             .padding(.horizontal, 30)
             .shadow(radius: 3)
