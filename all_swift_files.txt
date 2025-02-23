@@ -1,0 +1,805 @@
+//
+//  AxxessHealthAppApp.swift
+//  healthapp
+//
+//  Created by David Santos on 2/22/25.
+//
+
+
+import SwiftUI
+import Firebase
+
+@main
+struct AxxessHealthAppApp: App {
+    @StateObject var authViewModel = AuthViewModel()
+    @StateObject var patientInfoVM = PatientInfoViewModel()
+    init() {
+        FirebaseApp.configure() // Initialize Firebase
+        print("✅ Firebase configured successfully")
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            if authViewModel.isAuthenticated {
+                DashboardView()
+                    .environmentObject(authViewModel)
+                    .environmentObject(patientInfoVM)
+            } else {
+                LoginView()
+                    .environmentObject(authViewModel)
+                    .environmentObject(patientInfoVM)
+            }
+        }
+    }
+}
+import Foundation
+
+struct PatientInfo: Codable {
+    var name: String
+    var age: String
+    var gender: String
+    var contactNumber: String
+}
+
+//
+//  AuthViewModel.swift
+//  healthapp
+//
+//  Created by David Santos on 2/22/25.
+//
+
+
+import Foundation
+import FirebaseCore
+import FirebaseAuth
+import FirebaseFirestore
+
+class AuthViewModel: ObservableObject {
+    @Published var isAuthenticated = false
+    @Published var userRole: String = "" // "patient" or "admin"
+
+    func login(email: String, password: String) {
+        print("Attempting login with email: \(email)")
+
+        FirebaseManager.shared.auth.signIn(withEmail: email, password: password) { [weak self] (result: AuthDataResult?, error: Error?) in
+            if let error = error {
+                print("Login error: \(error.localizedDescription)")
+                return
+            }
+
+            print("✅ Login successful!")
+
+            self?.isAuthenticated = true
+
+            // Fetch user role from Firestore
+            guard let uid = result?.user.uid else { return }
+            print("Fetching user role for UID: \(uid)")
+
+            FirebaseManager.shared.firestore.collection("users")
+                .document(uid)
+                .getDocument { (snapshot, error) in
+                    if let error = error {
+                        print("Firestore error: \(error.localizedDescription)")
+                    } else if let data = snapshot?.data(), let role = data["role"] as? String {
+                        print("✅ User role fetched: \(role)")
+                        self?.userRole = role
+                    } else {
+                        print("❌ No user role found in Firestore.")
+                    }
+                }
+        }
+    }
+
+    func logout() {
+        do {
+            try FirebaseManager.shared.auth.signOut()
+            isAuthenticated = false
+            userRole = ""
+        } catch {
+            print("Logout error: \(error.localizedDescription)")
+        }
+    }
+}
+import Foundation
+
+struct Medication: Identifiable, Codable {
+    let id = UUID()
+    var name: String
+    var dosage: String
+    var frequency: String // Example: "Daily", "Every 8 hours"
+    var startDate: Date
+    var endDate: Date
+    var timeOfDay: String // Example: "Morning", "Evening"
+    var prescribedBy: String // Doctor's Name or ID
+}
+import Foundation
+
+class PatientInfoViewModel: ObservableObject {
+    @Published var patientInfo: PatientInfo? {
+        didSet {
+            savePatientInfo()
+        }
+    }
+
+    init() {
+        loadPatientInfo()
+    }
+
+    func savePatientInfo() {
+        do {
+            let encoded = try JSONEncoder().encode(patientInfo)
+            UserDefaults.standard.set(encoded, forKey: "SavedPatientInfo")
+        } catch {
+            print("Failed to save patient info: \(error)")
+        }
+    }
+
+    func loadPatientInfo() {
+        guard let savedData = UserDefaults.standard.data(forKey: "SavedPatientInfo") else {
+            print("No saved data found")
+            return
+        }
+
+        do {
+            let decodedInfo = try JSONDecoder().decode(PatientInfo.self, from: savedData)
+            self.patientInfo = decodedInfo
+        } catch {
+            print("Failed to load patient info: \(error)")
+        }
+    }
+}
+import SwiftUI
+
+struct DashboardView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @State private var medications: [Medication] = []
+    @State private var takenMedications: Int = 0
+    @State private var showMedicationForm = false
+    
+    let darkRed = Color(red: 139/255, green: 0, blue: 0) // Dark Red Color
+    let lightBackground = Color.white
+
+    var body: some View {
+        NavigationView {
+            VStack {
+                // TOP SECTION - Axxess Health & Welcome Message
+                VStack(alignment: .leading) {
+                    Text("Axxess Health")
+                        .font(.title)
+                        .bold()
+                        .foregroundColor(darkRed)
+
+                    Text("Welcome, \(authViewModel.userRole)")
+                        .font(.title3)
+                        .foregroundColor(.gray)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+                .padding(.top, 10)
+
+                // CENTERED DASHBOARD TITLE
+                Text("Dashboard")
+                    .font(.largeTitle)
+                    .bold()
+                    .foregroundColor(darkRed)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 5)
+
+                // PROGRESS BAR SECTION
+                VStack(spacing: 10) {
+                    Text("Medication Progress")
+                        .font(.headline)
+                        .foregroundColor(darkRed)
+                    
+                    ProgressView(value: progress, total: 1)
+                        .progressViewStyle(LinearProgressViewStyle(tint: darkRed))
+                        .frame(width: 250)
+                    
+                    Text("\(takenMedications)/\(totalMedications) taken")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
+                .padding()
+                .background(Color.white)
+                .cornerRadius(12)
+                .shadow(radius: 3)
+                .padding(.horizontal)
+
+                // MEDICATION LIST
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Today's Medications")
+                        .font(.title2)
+                        .bold()
+                        .foregroundColor(darkRed)
+
+                    if todayMedications.isEmpty {
+                        Text("No medications scheduled for today.")
+                            .foregroundColor(.gray)
+                    } else {
+                        ScrollView {
+                            ForEach(todayMedications) { medication in
+                                MedicationCard(medication: medication, darkRed: darkRed, onTaken: {
+                                    markMedicationAsTaken()
+                                })
+                            }
+                        }
+                    }
+                }
+                .padding()
+                .background(Color.white)
+                .cornerRadius(12)
+                .shadow(radius: 3)
+                .padding(.horizontal)
+
+                Spacer() // PUSHES BUTTONS TO THE BOTTOM
+
+                // BOTTOM BUTTONS
+                VStack(spacing: 15) {
+                    NavigationLink(destination: AIChatView()) {
+                        Text("Chat with AI Assistant")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(darkRed)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                            .shadow(radius: 3)
+                    }
+
+                    Button(action: {
+                        showMedicationForm = true
+                    }) {
+                        Text("Add Medication")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                            .shadow(radius: 3)
+                    }
+                    .sheet(isPresented: $showMedicationForm) {
+                        MedicationFormView { newMedication in
+                            medications.append(newMedication)
+                        }
+                    }
+
+                    Button(action: {
+                        authViewModel.logout()
+                    }) {
+                        Text("Logout")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.red)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                            .shadow(radius: 3)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 20) // Ensure space from the bottom
+            }
+            .navigationBarHidden(true) // Hide default navigation title
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    patientOrAdminProfile
+                }
+            }
+        }
+    }
+    
+    var todayMedications: [Medication] {
+        let today = Date()
+        return medications.filter { med in
+            med.startDate <= today && med.endDate >= today
+        }
+    }
+
+    var totalMedications: Int {
+        return todayMedications.count
+    }
+    
+    var progress: Double {
+        return totalMedications > 0 ? Double(takenMedications) / Double(totalMedications) : 0
+    }
+
+    func markMedicationAsTaken() {
+        if takenMedications < totalMedications {
+            takenMedications += 1
+        }
+    }
+    
+    // MARK: - Profile Button
+    var patientOrAdminProfile: some View {
+        Button(action: {
+            // Navigate to profile
+        }) {
+            Image(systemName: "person.crop.circle.fill")
+                .resizable()
+                .frame(width: 28, height: 28)
+                .foregroundColor(darkRed)
+                .shadow(radius: 3)
+        }
+    }
+}
+
+// MARK: - Medication Card View
+struct MedicationCard: View {
+    var medication: Medication
+    var darkRed: Color
+    var onTaken: () -> Void
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text(medication.name)
+                    .font(.headline)
+                    .foregroundColor(darkRed)
+
+                Text("Dosage: \(medication.dosage)")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+
+                Text("Time: \(medication.timeOfDay)")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+            }
+            Spacer()
+            
+            Button(action: onTaken) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.title)
+            }
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(10)
+        .shadow(radius: 3)
+        .padding(.horizontal, 5)
+    }
+}
+
+#Preview {
+    DashboardView()
+}
+
+import SwiftUI
+
+struct PatientInfoFormView: View {
+    @EnvironmentObject var patientInfoVM: PatientInfoViewModel
+    @State private var name = ""
+    @State private var age = ""
+    @State private var gender = ""
+    @State private var contactNumber = ""
+    @State private var isSaved = false
+    @State private var showError = false
+
+    var body: some View {
+        Form {
+            Section(header: Text("Basic Information")) {
+                TextField("Name", text: $name)
+                TextField("Age", text: $age)
+                    .keyboardType(.numberPad)
+                TextField("Gender", text: $gender)
+                TextField("Contact Number", text: $contactNumber)
+                    .keyboardType(.phonePad)
+            }
+
+            Button(action: {
+                if name.isEmpty || age.isEmpty || gender.isEmpty || contactNumber.isEmpty {
+                    showError = true
+                    return
+                }
+                let info = PatientInfo(name: name, age: age, gender: gender, contactNumber: contactNumber)
+                patientInfoVM.patientInfo = info
+                isSaved = true
+            }) {
+                Text("Save Information")
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.green)
+                    .cornerRadius(10)
+            }
+
+            if showError {
+                Text("All fields must be filled!")
+                    .foregroundColor(.red)
+            }
+
+            if isSaved {
+                Text("Information Saved Successfully!")
+                    .foregroundColor(.green)
+            }
+        }
+        .navigationTitle("Enter Your Info")
+    }
+}
+import SwiftUI
+
+struct MedicationFormView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @State private var name = ""
+    @State private var dosage = ""
+    @State private var frequency = "Daily"
+    @State private var startDate = Date()
+    @State private var endDate = Date()
+    @State private var timeOfDay = "Morning"
+    @State private var prescribedBy = ""
+    
+    var onSave: (Medication) -> Void
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Medication Details")) {
+                    TextField("Medication Name", text: $name)
+                    TextField("Dosage (e.g., 10mg)", text: $dosage)
+                    Picker("Frequency", selection: $frequency) {
+                        Text("Daily").tag("Daily")
+                        Text("Every 8 hours").tag("Every 8 hours")
+                        Text("Every 12 hours").tag("Every 12 hours")
+                    }
+                    Picker("Time of Day", selection: $timeOfDay) {
+                        Text("Morning").tag("Morning")
+                        Text("Afternoon").tag("Afternoon")
+                        Text("Evening").tag("Evening")
+                    }
+                }
+                
+                Section(header: Text("Duration")) {
+                    DatePicker("Start Date", selection: $startDate, displayedComponents: .date)
+                    DatePicker("End Date", selection: $endDate, displayedComponents: .date)
+                }
+                
+                Section(header: Text("Prescriber Info")) {
+                    TextField("Prescribed By (Doctor's Name)", text: $prescribedBy)
+                }
+            }
+            .navigationTitle("Add Medication")
+            .navigationBarItems(trailing: Button("Save") {
+                let newMedication = Medication(
+                    name: name,
+                    dosage: dosage,
+                    frequency: frequency,
+                    startDate: startDate,
+                    endDate: endDate,
+                    timeOfDay: timeOfDay,
+                    prescribedBy: prescribedBy
+                )
+                onSave(newMedication)
+                presentationMode.wrappedValue.dismiss()
+            })
+        }
+    }
+}
+
+import SwiftUI
+import FirebaseAuth
+
+struct LoginView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @State private var email = ""
+    @State private var password = ""
+    @State private var errorMessage = ""
+    @State private var isCreatingAccount = false
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Axxess Health")
+                .font(.largeTitle)
+                .bold()
+            
+            TextField("Email", text: $email)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+            
+            SecureField("Password", text: $password)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+            
+            Button(action: {
+                if email.isEmpty || password.isEmpty {
+                    errorMessage = "Please enter both email and password."
+                } else {
+                    errorMessage = ""
+                    Auth.auth().signIn(withEmail: email, password: password) { authResult, error in
+                        if let error = error {
+                            errorMessage = error.localizedDescription
+                        } else {
+                            authViewModel.isAuthenticated = true
+                        }
+                    }
+                }
+            }) {
+                Text("Login")
+                    .foregroundColor(.white)
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.red)
+                    .cornerRadius(10)
+            }
+            .padding(.horizontal)
+            
+            Button(action: {
+                isCreatingAccount = true
+            }) {
+                Text("Create Account")
+                    .foregroundColor(.blue)
+                    .padding()
+            }
+            .sheet(isPresented: $isCreatingAccount) {
+                CreateAccountView()
+            }
+            
+            if !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .foregroundColor(.red)
+            }
+            
+            if authViewModel.isAuthenticated {
+                Text("✅ Login Successful!")
+                    .foregroundColor(.green)
+            }
+        }
+        .padding()
+    }
+}
+//
+//  NavigationBarView.swift
+//  healthapp
+//
+//  Created by Omer Erturk on 2/22/25.
+//
+
+import SwiftUI
+
+struct ContentView: View {
+    @State private var isDoctor = false // Toggle for demo purposes
+
+    var body: some View {
+        NavigationView {
+            VStack {
+                if isDoctor {
+                    DoctorView()
+                } else {
+                    PatientView()
+                }
+                
+                // Toggle between views for testing
+                Button(action: {
+                    isDoctor.toggle()
+                }) {
+                    Text("Switch to \(isDoctor ? "Patient" : "Doctor") View")
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+                .padding()
+            }
+        }
+    }
+}
+
+struct PatientView: View {
+    var body: some View {
+        VStack {
+            Text("Welcome, Patient!")
+                .font(.largeTitle)
+        }
+        .navigationTitle("Patient Dashboard")
+        .navigationBarItems(trailing: Button("Profile") {
+            // Action for patient profile
+        })
+    }
+}
+
+struct DoctorView: View {
+    var body: some View {
+        VStack {
+            Text("Welcome, Doctor!")
+                .font(.largeTitle)
+        }
+        .navigationTitle("Doctor Dashboard")
+        .navigationBarItems(
+            leading: Button("Appointments") {
+                // Action for appointments
+            },
+            trailing: Button("Profile") {
+                // Action for doctor profile
+            }
+        )
+    }
+}
+import SwiftUI
+
+struct PatientProfileView: View {
+    @EnvironmentObject var patientInfoVM: PatientInfoViewModel
+
+    var body: some View {
+        VStack {
+            if let info = patientInfoVM.patientInfo {
+                Text("Patient Profile")
+                    .font(.largeTitle)
+                    .padding()
+
+                Text("Name: \(info.name)")
+                Text("Age: \(info.age)")
+                Text("Gender: \(info.gender)")
+                Text("Contact Number: \(info.contactNumber)")
+            } else {
+                Text("No information available. Please fill out the form.")
+                    .foregroundColor(.gray)
+            }
+        }
+        .navigationTitle("Profile")
+        .padding()
+    }
+}
+//
+//  ViewModel.swift
+//  healthapp
+//
+//  Created by Omer Erturk on 2/22/25.
+//
+
+//
+//  AIChatView.swift
+//  healthapp
+//
+//  Created by David Santos on 2/22/25.
+//
+
+
+import SwiftUI
+
+struct AIChatView: View {
+    @State private var userMessage = ""
+    @State private var chatLog: [String] = ["AI: Hi! I'm your health assistant. How can I help?"]
+
+    var body: some View {
+        VStack {
+            ScrollView {
+                ForEach(chatLog, id: \.self) { message in
+                    Text(message)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: message.hasPrefix("AI:") ? .leading : .trailing)
+                        .background(message.hasPrefix("AI:") ? Color.gray.opacity(0.2) : Color.blue.opacity(0.2))
+                        .cornerRadius(10)
+                        .padding(.horizontal)
+                }
+            }
+
+            HStack {
+                TextField("Type your message...", text: $userMessage)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                Button("Send") {
+                    sendMessage()
+                }
+                .padding(.horizontal)
+            }
+            .padding()
+        }
+        .navigationTitle("AI Assistant")
+    }
+
+    func sendMessage() {
+        guard !userMessage.isEmpty else { return }
+        chatLog.append("You: \(userMessage)")
+
+        // Placeholder AI response
+        let aiResponse = "AI: I’m here to assist you with your health-related questions!"
+        chatLog.append(aiResponse)
+
+        userMessage = ""
+    }
+}
+//
+//  CreateAccountView.swift
+//  healthapp
+//
+//  Created by Lukas Lindestaf on 2/22/25.
+//
+import SwiftUI
+import FirebaseAuth
+import FirebaseFirestore
+
+struct CreateAccountView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @State private var email = ""
+    @State private var password = ""
+    @State private var errorMessage = ""
+    @State private var role = "Patient"  // Default role is "Patient"
+    @State private var roles = ["Doctor", "Patient"]  // Options for user role
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Create Account")
+                .font(.largeTitle)
+                .bold()
+            
+            TextField("Email", text: $email)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+            
+            SecureField("Password", text: $password)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+            
+            Picker("Select Role", selection: $role) {
+                ForEach(roles, id: \.self) { role in
+                    Text(role)
+                }
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .padding(.horizontal)
+            
+            Button(action: {
+                if email.isEmpty || password.isEmpty {
+                    errorMessage = "Please fill out all fields."
+                } else {
+                    errorMessage = ""
+                    Auth.auth().createUser(withEmail: email, password: password) { authResult, error in
+                        if let error = error {
+                            errorMessage = error.localizedDescription
+                        } else {
+                            // Successfully created user
+                            let db = Firestore.firestore()
+                            let userRef = db.collection("users").document(authResult!.user.uid)
+                            userRef.setData([
+                                "email": email,
+                                "role": role // Store the selected role in Firestore
+                            ]) { err in
+                                if let err = err {
+                                    errorMessage = "Error setting user role: \(err.localizedDescription)"
+                                } else {
+                                    authViewModel.isAuthenticated = true
+                                }
+                            }
+                        }
+                    }
+                }
+            }) {
+                Text("Sign Up")
+                    .foregroundColor(.white)
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(Color.green)
+                    .cornerRadius(10)
+            }
+            .padding(.horizontal)
+            
+            if !errorMessage.isEmpty {
+                Text(errorMessage)
+                    .foregroundColor(.red)
+            }
+        }
+        .padding()
+    }
+}
+
+//
+//  FirebaseManager.swift
+//  healthapp
+//
+//  Created by David Santos on 2/22/25.
+//
+
+
+import Foundation
+import FirebaseCore
+import FirebaseAuth
+import FirebaseFirestore
+
+class FirebaseManager: ObservableObject {
+    static let shared = FirebaseManager()
+
+    let auth: Auth
+    let firestore: Firestore
+
+    private init() {
+        //FirebaseApp.configure()
+        self.auth = Auth.auth()
+        self.firestore = Firestore.firestore()
+    }
+}

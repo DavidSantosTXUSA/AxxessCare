@@ -42,7 +42,7 @@ struct DashboardView: View {
 
                 // WELCOME MESSAGE
                 VStack(alignment: .leading) {
-                    Text("Welcome, \(authViewModel.userRole == "admin" ? "Doctor" : "Patient")")
+                    Text("Welcome")
                         .font(.title3)
                         .foregroundColor(.gray)
                         .frame(maxWidth: .infinity, alignment: .leading) // Left-aligned
