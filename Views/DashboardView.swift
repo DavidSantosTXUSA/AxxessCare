@@ -141,17 +141,21 @@ struct PatientDashboardContent: View {
     }
 }
 
-// MARK: - Doctor Dashboard Content
 struct DoctorDashboardContent: View {
     @EnvironmentObject var authViewModel: AuthViewModel
-    @StateObject private var doctorNetworkVM = DoctorNetworkViewModel(doctorUid: FirebaseManager.shared.auth.currentUser?.uid ?? "")
+    @StateObject private var doctorNetworkVM: DoctorNetworkViewModel
     @State private var showAddPatient = false
     
     let darkRed = Color(red: 139/255, green: 0, blue: 0)
 
+    init() {
+        let uid = FirebaseManager.shared.auth.currentUser?.uid ?? ""
+        _doctorNetworkVM = StateObject(wrappedValue: DoctorNetworkViewModel(doctorUid: uid))
+    }
+
     var body: some View {
         VStack(alignment: .leading) {
-            // HEADER with title and "Add Patient" button.
+            // HEADER with title and "Add Patient" button
             HStack {
                 Text("Doctor Dashboard")
                     .font(.largeTitle)
@@ -169,7 +173,8 @@ struct DoctorDashboardContent: View {
                 }
             }
             .padding()
-            
+
+            // PATIENT LIST
             if doctorNetworkVM.patients.isEmpty {
                 Text("No patients in your network.")
                     .foregroundColor(.gray)
@@ -187,13 +192,14 @@ struct DoctorDashboardContent: View {
                             }
                         }
                     }
-                    .onDelete(perform: deletePatient)  // Enables swipe-to-delete
+                    .onDelete(perform: deletePatient)
                 }
                 .listStyle(PlainListStyle())
             }
-            
+
             Spacer()
-            
+
+            // LOGOUT BUTTON
             Button(action: {
                 authViewModel.logout()
             }) {
@@ -206,6 +212,7 @@ struct DoctorDashboardContent: View {
             }
             .padding([.horizontal, .bottom])
         }
+        // ADD PATIENT SHEET
         .sheet(isPresented: $showAddPatient) {
             AddPatientView { newPatient in
                 doctorNetworkVM.addPatient(newPatient)
@@ -213,11 +220,11 @@ struct DoctorDashboardContent: View {
         }
     }
 
-    // MARK: - Delete Patient Function
+    // MARK: - Delete Patient (Soft Delete)
     private func deletePatient(at offsets: IndexSet) {
         for index in offsets {
             let patient = doctorNetworkVM.patients[index]
-            //doctorNetworkVM.removePatient(patient)
+            doctorNetworkVM.removePatient(patient)
         }
     }
 }

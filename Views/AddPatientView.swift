@@ -2,11 +2,7 @@
 //  AddPatientView.swift
 //  healthapp
 //
-//  Created by David Santos on 2/23/25.
-//
 
-
-// AddPatientView.swift (in Views folder)
 import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
@@ -48,14 +44,16 @@ struct AddPatientView: View {
                     return
                 }
                 guard let documents = snapshot?.documents, let doc = documents.first,
-                      let role = doc.data()["role"] as? String, role.lowercased() == "patient" else {
+                      let role = doc.data()["role"] as? String,
+                      role.lowercased() == "patient" else {
                     errorMessage = "No patient found with that email."
                     return
                 }
                 
-                // Optionally, you might want to fetch the patient's name from their document.
                 let name = doc.data()["name"] as? String ?? "Unnamed Patient"
-                let patient = DoctorPatient(id: doc.documentID, name: name, email: patientEmail)
+                let patientID = doc.documentID
+                let patient = DoctorPatient(id: patientID, name: name, email: patientEmail)
+                
                 onAddPatient(patient)
                 presentationMode.wrappedValue.dismiss()
             }
