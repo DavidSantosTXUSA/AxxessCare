@@ -52,28 +52,65 @@ struct DoctorAIChatView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
     
-    // MARK: - Send Message with Full Patient Context
+   
     func sendMessage() {
         guard !userMessage.isEmpty else { return }
-        
-        // Append the doctor's message
+
+        // Append the doctor's message to the chat log
         chatLog.append("You: \(userMessage)")
-        
-        // Fetch patients and medications for full context
-        fetchPatientsWithMedications { context in
+
+        // Build the context string from the doctor's list of patients and their medications
+        var context = "Doctor's Full Patient List with Details and Medications:\n"
+        let group = DispatchGroup()
+
+        for patient in doctorNetworkVM.patients {
+            context += "- \(patient.name) (\(patient.email))\n"
+            context += "  Age: \(patient.age), Gender: \(patient.gender), Contact: \(patient.contactNumber)\n"
+            context += "  Medications:\n"
+
+            group.enter()
+            // Fetch medications from Firestore for each patient
+            FirebaseManager.shared.firestore.collection("users")
+                .document(patient.id)
+                .collection("medications")
+                .getDocuments { snapshot, error in
+                    if let error = error {
+                        context += "  ⚠️ Error fetching medications: \(error.localizedDescription)\n"
+                    } else if let documents = snapshot?.documents, !documents.isEmpty {
+                        for doc in documents {
+                            let medName = doc.data()["name"] as? String ?? "Unknown"
+                            let dosage = doc.data()["dosage"] as? String ?? "Unknown dosage"
+                            let frequency = doc.data()["frequency"] as? String ?? "Unknown frequency"
+                            let startDate = doc.data()["startDate"] as? String ?? "N/A"
+                            let endDate = doc.data()["endDate"] as? String ?? "N/A"
+                            let timeOfDay = doc.data()["timeOfDay"] as? String ?? "N/A"
+
+                            context += "    • \(medName) - \(dosage), Frequency: \(frequency), Time: \(timeOfDay), Start: \(startDate), End: \(endDate)\n"
+                        }
+                    } else {
+                        context += "    No medications listed.\n"
+                    }
+                    group.leave()
+                }
+        }
+
+        // Once all medication data is fetched, send to ChatGPT
+        group.notify(queue: .main) {
             let prompt = "\(context)\nDoctor's question: \(userMessage)"
             print("Sending prompt to ChatGPT: \(prompt)")
-            
-            // Send to ChatGPT
+
+            // Send the prompt to ChatGPT
             sendPromptToChatGPT(prompt: prompt) { response in
                 DispatchQueue.main.async {
                     self.chatLog.append("AI: \(response)")
                 }
             }
+
+            userMessage = ""
         }
-        
-        userMessage = ""
     }
+
+
     
     // MARK: - Fetch Patients + Medications
     func fetchPatientsWithMedications(completion: @escaping (String) -> Void) {
@@ -130,10 +167,10 @@ struct DoctorAIChatView: View {
         let parameters: [String: Any] = [
             "model": "gpt-3.5-turbo",
             "messages": [
-                ["role": "system", "content": "You are a helpful medical assistant. You can view patient names, emails, and prescribed medications to assist doctors."],
+                ["role": "system", "content": "You are a helpful medical assistant. You can view patient names, emails, and prescribed medications to assist doctors. You can view all info related to the doctors patients and recommend different medications or healthcare advice"],
                 ["role": "user", "content": prompt]
             ],
-            "max_tokens": 200,
+            "max_tokens": 300,
             "temperature": 0.7
         ]
         

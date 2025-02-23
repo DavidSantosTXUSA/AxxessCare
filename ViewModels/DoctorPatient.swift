@@ -11,6 +11,9 @@ struct DoctorPatient: Identifiable, Codable {
     var id: String  // Patient UID (matches the document ID)
     var name: String
     var email: String
+    var age: Int?
+    var gender: String?
+    var contactNumber: String?
 }
 
 class DoctorNetworkViewModel: ObservableObject {
