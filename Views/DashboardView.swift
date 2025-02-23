@@ -19,7 +19,7 @@ struct DashboardView: View {
                         .bold()
                         .foregroundColor(darkRed)
 
-                    Text("Welcome, \(authViewModel.userRole == "admin" ? "Doctor" : "Patient")")
+                    Text("Welcome, \(authViewModel.userRole == "admin" ? "Patient" : "Doctor")")
                         .font(.title3)
                         .foregroundColor(.gray)
                 }
