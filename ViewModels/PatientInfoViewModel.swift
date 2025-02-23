@@ -1,36 +1,34 @@
-import Foundation
+import FirebaseFirestore
+import FirebaseAuth
 
 class PatientInfoViewModel: ObservableObject {
-    @Published var patientInfo: PatientInfo? {
-        didSet {
-            savePatientInfo()
-        }
-    }
+    @Published var patientInfo: Patient?
 
-    init() {
-        loadPatientInfo()
-    }
+    func fetchPatientInfo() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
 
-    func savePatientInfo() {
-        do {
-            let encoded = try JSONEncoder().encode(patientInfo)
-            UserDefaults.standard.set(encoded, forKey: "SavedPatientInfo")
-        } catch {
-            print("Failed to save patient info: \(error)")
-        }
-    }
-
-    func loadPatientInfo() {
-        guard let savedData = UserDefaults.standard.data(forKey: "SavedPatientInfo") else {
-            print("No saved data found")
-            return
-        }
-
-        do {
-            let decodedInfo = try JSONDecoder().decode(PatientInfo.self, from: savedData)
-            self.patientInfo = decodedInfo
-        } catch {
-            print("Failed to load patient info: \(error)")
+        let userRef = Firestore.firestore().collection("users").document(uid)
+        userRef.getDocument { document, error in
+            if let document = document, document.exists {
+                let data = document.data()
+                self.patientInfo = Patient(
+                    name: data?["name"] as? String ?? "N/A",
+                    age: (data?["age"] as? Int)?.description ?? "N/A", // Convert age to String safely
+                    gender: data?["gender"] as? String ?? "N/A",
+                    contactNumber: data?["contactNumber"] as? String ?? "N/A",
+                    email: data?["email"] as? String ?? "N/A"  // Add this to match the struct
+                )
+            }
         }
     }
 }
+
+// **Struct for Patient**
+struct Patient: Codable {
+    var name: String
+    var age: String  // Changed to String to match Firebase data type
+    var gender: String
+    var contactNumber: String
+    var email: String  // Added missing email property
+}
+
