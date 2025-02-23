@@ -1,24 +1,15 @@
-//
-//  DoctorAIChatView.swift
-//  healthapp
-//
-//  Created by David Santos on 2/23/25.
-//
-
-
 import SwiftUI
 
 struct DoctorAIChatView: View {
     @State private var userMessage: String = ""
     @State private var chatLog: [String] = ["AI: Hi Doctor! I'm your health assistant. How can I help?"]
 
-    // We'll fetch the doctor's patient list from DoctorNetworkViewModel
+    // Fetch doctor's patient list from DoctorNetworkViewModel
     @StateObject private var doctorNetworkVM: DoctorNetworkViewModel
     
     let darkRed = Color(red: 139/255, green: 0, blue: 0)
     
     init(doctorUid: String) {
-        // Initialize with the current doctor's UID
         _doctorNetworkVM = StateObject(wrappedValue: DoctorNetworkViewModel(doctorUid: doctorUid))
     }
     
@@ -28,7 +19,7 @@ struct DoctorAIChatView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(chatLog.indices, id: \.self) { index in
-                            ChatBubble(message: chatLog[index])
+                            DoctorChatBubble(message: chatLog[index])
                                 .id(index)
                         }
                     }
@@ -61,45 +52,71 @@ struct DoctorAIChatView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
     
+    // MARK: - Send Message with Full Patient Context
     func sendMessage() {
         guard !userMessage.isEmpty else { return }
         
-        // Append the doctor's message to the chat log
+        // Append the doctor's message
         chatLog.append("You: \(userMessage)")
         
-        // Build the context string from the doctor's list of patients
-        var context = "Doctor's Patient List:\n"
-        if doctorNetworkVM.patients.isEmpty {
-            context += "- No patients currently assigned.\n"
-        } else {
-            for patient in doctorNetworkVM.patients {
-                context += "- \(patient.name) (\(patient.email))\n"
-            }
-        }
-        
-        // Combine context with the user's question
-        let prompt = "\(context)\nDoctor's question: \(userMessage)"
-        print("Sending prompt to ChatGPT: \(prompt)")
-        
-        // Send the prompt to ChatGPT
-        sendPromptToChatGPT(prompt: prompt) { response in
-            DispatchQueue.main.async {
-                self.chatLog.append("AI: \(response)")
+        // Fetch patients and medications for full context
+        fetchPatientsWithMedications { context in
+            let prompt = "\(context)\nDoctor's question: \(userMessage)"
+            print("Sending prompt to ChatGPT: \(prompt)")
+            
+            // Send to ChatGPT
+            sendPromptToChatGPT(prompt: prompt) { response in
+                DispatchQueue.main.async {
+                    self.chatLog.append("AI: \(response)")
+                }
             }
         }
         
         userMessage = ""
     }
     
+    // MARK: - Fetch Patients + Medications
+    func fetchPatientsWithMedications(completion: @escaping (String) -> Void) {
+        var context = "Doctor's Patient List and Medications:\n"
+        let group = DispatchGroup()
+        
+        for patient in doctorNetworkVM.patients {
+            context += "- \(patient.name) (\(patient.email))\n"
+            context += "  Medications:\n"
+            
+            group.enter()
+            FirebaseManager.shared.firestore.collection("users")
+                .document(patient.id)
+                .collection("medications")
+                .getDocuments { snapshot, error in
+                    if let error = error {
+                        context += "  ⚠️ Error fetching medications: \(error.localizedDescription)\n"
+                    } else if let documents = snapshot?.documents, !documents.isEmpty {
+                        for doc in documents {
+                            let medName = doc.data()["name"] as? String ?? "Unknown"
+                            let dosage = doc.data()["dosage"] as? String ?? "Unknown dosage"
+                            context += "    • \(medName) - \(dosage)\n"
+                        }
+                    } else {
+                        context += "    No medications listed.\n"
+                    }
+                    group.leave()
+                }
+        }
+        
+        group.notify(queue: .main) {
+            completion(context)
+        }
+    }
+    
+    // MARK: - Send Prompt to ChatGPT
     func sendPromptToChatGPT(prompt: String, completion: @escaping (String) -> Void) {
-        // Retrieve the API key from Info.plist (same approach as your existing AIChatView)
         guard let apiKey = Bundle.main.object(forInfoDictionaryKey: "OpenAI_API_KEY") as? String, !apiKey.isEmpty else {
             print("OpenAI API key not found in Info.plist")
             completion("Error: API key missing")
             return
         }
         
-        // Set up the OpenAI Chat Completions endpoint
         guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
             completion("Error: Invalid URL")
             return
@@ -110,14 +127,13 @@ struct DoctorAIChatView: View {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         
-        // Build the JSON payload with your chosen model and parameters
         let parameters: [String: Any] = [
             "model": "gpt-3.5-turbo",
             "messages": [
-                ["role": "system", "content": "You are a helpful assistant that incorporates patient context for a Doctor."],
+                ["role": "system", "content": "You are a helpful medical assistant. You can view patient names, emails, and prescribed medications to assist doctors."],
                 ["role": "user", "content": prompt]
             ],
-            "max_tokens": 150,
+            "max_tokens": 200,
             "temperature": 0.7
         ]
         
@@ -130,7 +146,6 @@ struct DoctorAIChatView: View {
             return
         }
         
-        // Perform the API request
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
                 print("Error in API call: \(error)")
@@ -142,7 +157,6 @@ struct DoctorAIChatView: View {
                 return
             }
             do {
-                // Parse the response JSON to extract the generated message
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let choices = json["choices"] as? [[String: Any]],
                    let message = choices.first?["message"] as? [String: Any],
@@ -158,7 +172,7 @@ struct DoctorAIChatView: View {
     }
 }
 
-// MARK: - ChatBubble Reuse
+// MARK: - ChatBubble Component
 struct DoctorChatBubble: View {
     let message: String
     
