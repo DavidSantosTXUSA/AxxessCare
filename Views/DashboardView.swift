@@ -17,7 +17,7 @@ struct DashboardView: View {
             .navigationBarHidden(true)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    ProfileButtonView()
+                    ProfileButtonView()  // Ensure this is defined below or remove if not needed
                 }
             }
         }
@@ -26,10 +26,9 @@ struct DashboardView: View {
 
 // MARK: - Patient Dashboard Content
 struct PatientDashboardContent: View {
-    // MedicationViewModel fetches medications from "users/{uid}/medications"
     @StateObject private var medicationVM = MedicationViewModel(userID: FirebaseManager.shared.auth.currentUser?.uid ?? "")
     @EnvironmentObject var authViewModel: AuthViewModel
-    // Calculate progress based on medications marked as taken.
+    
     var takenMedications: Int {
         medicationVM.medications.filter { $0.isTaken }.count
     }
@@ -112,7 +111,7 @@ struct PatientDashboardContent: View {
             .padding(.horizontal)
             
             Spacer()
-            // BOTTOM BUTTONS: Chat and Logout (Patients cannot add medications)
+            // BOTTOM BUTTONS: Chat and Logout
             VStack(spacing: 15) {
                 NavigationLink(destination: AIChatView()) {
                     Text("Chat with AI Assistant")
@@ -145,6 +144,7 @@ struct DoctorDashboardContent: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var doctorNetworkVM: DoctorNetworkViewModel
     @State private var showAddPatient = false
+    @State private var showDoctorAI = false
     
     let darkRed = Color(red: 139/255, green: 0, blue: 0)
 
@@ -155,7 +155,7 @@ struct DoctorDashboardContent: View {
 
     var body: some View {
         VStack(alignment: .leading) {
-            // HEADER with title and "Add Patient" button
+            // HEADER
             HStack {
                 Text("Doctor Dashboard")
                     .font(.largeTitle)
@@ -174,7 +174,6 @@ struct DoctorDashboardContent: View {
             }
             .padding()
 
-            // PATIENT LIST
             if doctorNetworkVM.patients.isEmpty {
                 Text("No patients in your network.")
                     .foregroundColor(.gray)
@@ -196,10 +195,26 @@ struct DoctorDashboardContent: View {
                 }
                 .listStyle(PlainListStyle())
             }
-
+            
             Spacer()
+            
+            // AI Assistant Button for Doctors
+            Button(action: {
+                showDoctorAI = true
+            }) {
+                Text("AI Assistant")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(darkRed)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+            }
+            .padding(.horizontal)
+            .sheet(isPresented: $showDoctorAI) {
+                // Present the new DoctorAIChatView
+                DoctorAIChatView(doctorUid: FirebaseManager.shared.auth.currentUser?.uid ?? "")
+            }
 
-            // LOGOUT BUTTON
             Button(action: {
                 authViewModel.logout()
             }) {
@@ -212,7 +227,6 @@ struct DoctorDashboardContent: View {
             }
             .padding([.horizontal, .bottom])
         }
-        // ADD PATIENT SHEET
         .sheet(isPresented: $showAddPatient) {
             AddPatientView { newPatient in
                 doctorNetworkVM.addPatient(newPatient)
@@ -220,7 +234,6 @@ struct DoctorDashboardContent: View {
         }
     }
 
-    // MARK: - Delete Patient (Soft Delete)
     private func deletePatient(at offsets: IndexSet) {
         for index in offsets {
             let patient = doctorNetworkVM.patients[index]
@@ -229,13 +242,14 @@ struct DoctorDashboardContent: View {
     }
 }
 
-
 // MARK: - Profile Button
 struct ProfileButtonView: View {
     let darkRed = Color(red: 139/255, green: 0, blue: 0)
+    
     var body: some View {
         Button(action: {
-            // Implement profile navigation if needed.
+            // Implement profile navigation if needed
+            print("Profile tapped")
         }) {
             Image(systemName: "person.crop.circle.fill")
                 .resizable()
@@ -243,12 +257,5 @@ struct ProfileButtonView: View {
                 .foregroundColor(darkRed)
                 .shadow(radius: 3)
         }
-    }
-}
-
-// MARK: - Preview
-struct DashboardView_Previews: PreviewProvider {
-    static var previews: some View {
-        DashboardView().environmentObject(AuthViewModel())
     }
 }
