@@ -1,12 +1,3 @@
-//
-//  DoctorPatientMedicationsView.swift
-//  healthapp
-//
-//  Created by David Santos on 2/23/25.
-//
-
-
-// DoctorPatientMedicationsView.swift (in Views folder)
 import SwiftUI
 
 struct DoctorPatientMedicationsView: View {
@@ -24,41 +15,56 @@ struct DoctorPatientMedicationsView: View {
     
     var body: some View {
         VStack {
-            Text("\(patient.name)'s Medications")
-                .font(.largeTitle)
-                .padding()
+            // HEADER: Patient Name & Title
+            HStack {
+                VStack(alignment: .leading) {
+                    Text("Patient Medications")
+                        .font(.title3)
+                        .foregroundColor(.gray)
+                    
+                    Text("\(patient.name)'s Medications")
+                        .font(.largeTitle)
+                        .bold()
+                        .foregroundColor(darkRed)
+                }
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top, 10)
             
+            // MEDICATION LIST
             if medicationVM.medications.isEmpty {
                 Text("No medications found for this patient.")
                     .foregroundColor(.gray)
+                    .padding(.top, 10)
             } else {
-                List {
-                    ForEach(medicationVM.medications) { medication in
-                        MedicationCard(medication: medication, darkRed: darkRed, onToggleTaken: { newState in
-                            var updatedMedication = medication
-                            updatedMedication.isTaken = newState
-                            medicationVM.updateMedication(updatedMedication)
-                        })
-                    }
-                    .onDelete { indexSet in
-                        indexSet.forEach { index in
-                            let medication = medicationVM.medications[index]
-                            medicationVM.deleteMedication(medication)
+                ScrollView {
+                    VStack(spacing: 10) {
+                        ForEach(medicationVM.medications) { medication in
+                            MedicationCard(medication: medication, darkRed: darkRed, onToggleTaken: { newState in
+                                var updatedMedication = medication
+                                updatedMedication.isTaken = newState
+                                medicationVM.updateMedication(updatedMedication)
+                            })
                         }
                     }
+                    .padding(.horizontal)
                 }
-                .listStyle(PlainListStyle())
             }
             
+            Spacer()
+            
+            // ADD MEDICATION BUTTON
             Button(action: {
                 showAddMedication = true
             }) {
                 Text("Add Medication")
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.green)
+                    .background(darkRed)
                     .foregroundColor(.white)
                     .cornerRadius(12)
+                    .shadow(radius: 3)
             }
             .padding()
             .sheet(isPresented: $showAddMedication) {
@@ -66,9 +72,7 @@ struct DoctorPatientMedicationsView: View {
                     medicationVM.addMedication(newMedication)
                 }
             }
-            
-            Spacer()
         }
-        .navigationTitle("Patient Medications")
+        .navigationBarBackButtonHidden(false)
     }
 }
