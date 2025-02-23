@@ -19,6 +19,7 @@ struct CreateAccountView: View {
     @State private var role = "Patient"  // Default role is "Patient"
     @State private var roles = ["Doctor", "Patient"]
     @State private var errorMessage = ""
+    @Environment(\.presentationMode) var presentationMode
 
     var body: some View {
         VStack(spacing: 15) {
@@ -70,7 +71,7 @@ struct CreateAccountView: View {
                     if let error = error {
                         errorMessage = error.localizedDescription
                     } else {
-                        authViewModel.isAuthenticated = true
+                        presentationMode.wrappedValue.dismiss()
                     }
                 }
             }) {
