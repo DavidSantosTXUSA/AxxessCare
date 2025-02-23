@@ -105,12 +105,6 @@ struct PatientDashboardContent: View {
                                 medicationVM.updateMedication(updatedMedication)
                             })
                         }
-                        .onDelete { indexSet in
-                            indexSet.forEach { index in
-                                let medication = medicationVM.medications[index]
-                                medicationVM.deleteMedication(medication)
-                            }
-                        }
                     }
                     .listStyle(PlainListStyle())
                 }
