@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		41C80E442D6AA71000CEDE2D /* NavigationBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C80E432D6AA70200CEDE2D /* NavigationBarView.swift */; };
+		41C80E492D6AA9C200CEDE2D /* ViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C80E482D6AA9A000CEDE2D /* ViewModel.swift */; };
+		41C80E512D6AAA4E00CEDE2D /* PatientInfoFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C80E502D6AAA4700CEDE2D /* PatientInfoFormView.swift */; };
+		41C80E532D6AAA6100CEDE2D /* PatientProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C80E522D6AAA5C00CEDE2D /* PatientProfileView.swift */; };
+		41C80E5B2D6AB43100CEDE2D /* MedicationFormView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41C80E5A2D6AB42700CEDE2D /* MedicationFormView.swift */; };
 		B5A6AC862D6A978100C19B64 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = B5A6AC852D6A978100C19B64 /* FirebaseAnalytics */; };
 		B5A6AC882D6A978100C19B64 /* FirebaseAnalyticsOnDeviceConversion in Frameworks */ = {isa = PBXBuildFile; productRef = B5A6AC872D6A978100C19B64 /* FirebaseAnalyticsOnDeviceConversion */; };
 		B5A6AC8A2D6A978100C19B64 /* FirebaseAnalyticsWithoutAdIdSupport in Frameworks */ = {isa = PBXBuildFile; productRef = B5A6AC892D6A978100C19B64 /* FirebaseAnalyticsWithoutAdIdSupport */; };
@@ -39,6 +44,11 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		41C80E432D6AA70200CEDE2D /* NavigationBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationBarView.swift; sourceTree = "<group>"; };
+		41C80E482D6AA9A000CEDE2D /* ViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModel.swift; sourceTree = "<group>"; };
+		41C80E502D6AAA4700CEDE2D /* PatientInfoFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatientInfoFormView.swift; sourceTree = "<group>"; };
+		41C80E522D6AAA5C00CEDE2D /* PatientProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatientProfileView.swift; sourceTree = "<group>"; };
+		41C80E5A2D6AB42700CEDE2D /* MedicationFormView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MedicationFormView.swift; sourceTree = "<group>"; };
 		B5A6AC492D6A934000C19B64 /* healthapp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = healthapp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5A6AC5B2D6A934200C19B64 /* healthappTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = healthappTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5A6AC652D6A934200C19B64 /* healthappUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = healthappUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -123,6 +133,11 @@
 		B5A6AC782D6A943D00C19B64 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				41C80E5A2D6AB42700CEDE2D /* MedicationFormView.swift */,
+				41C80E522D6AAA5C00CEDE2D /* PatientProfileView.swift */,
+				41C80E502D6AAA4700CEDE2D /* PatientInfoFormView.swift */,
+				41C80E482D6AA9A000CEDE2D /* ViewModel.swift */,
+				41C80E432D6AA70200CEDE2D /* NavigationBarView.swift */,
 				B5A6AC832D6A952A00C19B64 /* AIChatView.swift */,
 				B5A6AC822D6A951E00C19B64 /* DashboardView.swift */,
 				B5A6AC812D6A950F00C19B64 /* LoginView.swift */,
@@ -282,9 +297,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				41C80E5B2D6AB43100CEDE2D /* MedicationFormView.swift in Sources */,
+				41C80E492D6AA9C200CEDE2D /* ViewModel.swift in Sources */,
+				41C80E512D6AAA4E00CEDE2D /* PatientInfoFormView.swift in Sources */,
+				41C80E532D6AAA6100CEDE2D /* PatientProfileView.swift in Sources */,
 				B5A6AC992D6A9A4D00C19B64 /* AIChatView.swift in Sources */,
 				B5A6AC972D6A9A4100C19B64 /* DashboardView.swift in Sources */,
 				B5A6AC982D6A9A4800C19B64 /* LoginView.swift in Sources */,
+				41C80E442D6AA71000CEDE2D /* NavigationBarView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
