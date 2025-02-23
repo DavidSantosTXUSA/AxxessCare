@@ -112,7 +112,6 @@ struct PatientDashboardContent: View {
             .padding(.horizontal)
             
             Spacer()
-            
             // BOTTOM BUTTONS: Chat and Logout (Patients cannot add medications)
             VStack(spacing: 15) {
                 NavigationLink(destination: AIChatView()) {
@@ -124,19 +123,6 @@ struct PatientDashboardContent: View {
                         .cornerRadius(12)
                         .shadow(radius: 3)
                 }
-                
-                // "Add Medication" is disabled for patients.
-                Button(action: {}) {
-                    Text("Add Medication (Unavailable)")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                        .shadow(radius: 3)
-                }
-                .disabled(true)
-                
                 Button(action: {
                     authViewModel.logout()
                 }) {

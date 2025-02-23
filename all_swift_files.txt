@@ -41,55 +41,118 @@ struct PatientInfo: Codable {
     var contactNumber: String
 }
 
-//
-//  AuthViewModel.swift
-//  healthapp
-//
-//  Created by David Santos on 2/22/25.
-//
 
+import SwiftUI
 
+struct MedicationCard: View {
+    let medication: Medication
+    let darkRed: Color
+    var onToggleTaken: (Bool) -> Void
+    @State private var isTaken: Bool
+    
+    init(medication: Medication, darkRed: Color, onToggleTaken: @escaping (Bool) -> Void) {
+        self.medication = medication
+        self.darkRed = darkRed
+        self.onToggleTaken = onToggleTaken
+        _isTaken = State(initialValue: medication.isTaken)
+    }
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading) {
+                Text(medication.name)
+                    .font(.headline)
+                    .foregroundColor(darkRed)
+                Text("Dosage: \(medication.dosage)")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                Text("Time: \(medication.timeOfDay)")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+            }
+            Spacer()
+            Button(action: {
+                isTaken.toggle()
+                onToggleTaken(isTaken)
+            }) {
+                Image(systemName: isTaken ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isTaken ? .green : .gray)
+                    .font(.title)
+            }
+        }
+        .padding()
+        .background(Color.white)
+        .cornerRadius(10)
+        .shadow(radius: 3)
+        .padding(.horizontal, 5)
+    }
+}
+// AuthViewModel.swift
 import Foundation
 import FirebaseCore
 import FirebaseAuth
 import FirebaseFirestore
+//import FirebaseFirestoreSwift
 
 class AuthViewModel: ObservableObject {
     @Published var isAuthenticated = false
-    @Published var userRole: String = "" // "patient" or "admin"
-
+    @Published var userRole: String = "" // "Patient" or "Doctor"
+    
+    init() {
+        // If already logged in, set up listener:
+        if let user = FirebaseManager.shared.auth.currentUser {
+            self.isAuthenticated = true
+            self.setupRoleListener(for: user.uid)
+        }
+    }
+    
     func login(email: String, password: String) {
         print("Attempting login with email: \(email)")
-
-        FirebaseManager.shared.auth.signIn(withEmail: email, password: password) { [weak self] (result: AuthDataResult?, error: Error?) in
+        
+        FirebaseManager.shared.auth.signIn(withEmail: email, password: password) { [weak self] (result, error) in
             if let error = error {
                 print("Login error: \(error.localizedDescription)")
                 return
             }
-
+            
+            guard let self = self, let user = result?.user else { return }
             print("✅ Login successful!")
-
-            self?.isAuthenticated = true
-
-            // Fetch user role from Firestore
-            guard let uid = result?.user.uid else { return }
-            print("Fetching user role for UID: \(uid)")
-
-            FirebaseManager.shared.firestore.collection("users")
-                .document(uid)
-                .getDocument { (snapshot, error) in
-                    if let error = error {
-                        print("Firestore error: \(error.localizedDescription)")
-                    } else if let data = snapshot?.data(), let role = data["role"] as? String {
-                        print("✅ User role fetched: \(role)")
-                        self?.userRole = role
-                    } else {
-                        print("❌ No user role found in Firestore.")
-                    }
-                }
+            self.setupRoleListener(for: user.uid)
+            print("Attempting role lisnter")
+            self.isAuthenticated = true
+            
+            // Set up a snapshot listener to continuously fetch the user role
+            
         }
     }
+    
+    private func setupRoleListener(for uid: String) {
+        print("Setting up role listener for uid: \(uid)")
+        FirebaseManager.shared.firestore.collection("users").document(uid)
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error = error {
+                    print("Firestore role listener error: \(error.localizedDescription)")
+                    return
+                }
+                
+                if let snapshot = snapshot {
+                    print("Snapshot received, exists? \(snapshot.exists)")
+                } else {
+                    print("No snapshot received for uid: \(uid)")
+                }
+                
+                if let data = snapshot?.data(), let role = data["role"] as? String {
+                    DispatchQueue.main.async {
+                        print("✅ User role updated: \(role)")
+                        self?.userRole = role
+                    }
+                } else {
+                    print("❌ No user role found in Firestore for uid: \(uid)")
+                }
+            }
+    }
 
+    
     func logout() {
         do {
             try FirebaseManager.shared.auth.signOut()
@@ -98,6 +161,78 @@ class AuthViewModel: ObservableObject {
         } catch {
             print("Logout error: \(error.localizedDescription)")
         }
+    }
+}
+import Foundation
+import FirebaseFirestore
+//import FirebaseFirestoreSwift
+import FirebaseAuth
+
+class MedicationViewModel: ObservableObject {
+    @Published var medications: [Medication] = []
+    private var listener: ListenerRegistration?
+    let userID: String
+    
+    init(userID: String) {
+        self.userID = userID
+        guard !userID.isEmpty else {
+                    print("⚠️ MedicationViewModel: userID is empty—skipping Firestore fetch.")
+                    return
+                }
+        fetchMedications()
+    }
+    
+    func fetchMedications() {
+        guard !userID.isEmpty else { return }
+        let db = FirebaseManager.shared.firestore
+        listener = db.collection("users").document(userID).collection("medications")
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error = error {
+                    print("Error fetching medications: \(error.localizedDescription)")
+                    return
+                }
+                guard let documents = snapshot?.documents else { return }
+                self?.medications = documents.compactMap { doc in
+                    try? doc.data(as: Medication.self)
+                }
+            }
+    }
+    
+    func updateMedication(_ medication: Medication) {
+        let db = FirebaseManager.shared.firestore
+        do {
+            try db.collection("users").document(userID).collection("medications")
+                .document(medication.id.uuidString)
+                .setData(from: medication)
+        } catch {
+            print("Error updating medication: \(error)")
+        }
+    }
+    
+    func addMedication(_ medication: Medication) {
+        let db = FirebaseManager.shared.firestore
+        do {
+            try db.collection("users").document(userID).collection("medications")
+                .document(medication.id.uuidString)
+                .setData(from: medication)
+        } catch {
+            print("Error adding medication: \(error)")
+        }
+    }
+    
+    func deleteMedication(_ medication: Medication) {
+        let db = FirebaseManager.shared.firestore
+        db.collection("users").document(userID).collection("medications")
+            .document(medication.id.uuidString)
+            .delete { error in
+                if let error = error {
+                    print("Error deleting medication: \(error)")
+                }
+            }
+    }
+    
+    deinit {
+        listener?.remove()
     }
 }
 import Foundation
@@ -114,222 +249,321 @@ struct Medication: Identifiable, Codable {
     var isTaken: Bool = false
 }
 import Foundation
+import FirebaseFirestore
+//import FirebaseFirestoreSwift
+
+struct DoctorPatient: Identifiable, Codable {
+    var id: String  // patient uid
+    var name: String
+    var email: String
+}
+
+class DoctorNetworkViewModel: ObservableObject {
+    @Published var patients: [DoctorPatient] = []
+    private var listener: ListenerRegistration?
+    let doctorUid: String
+    
+    init(doctorUid: String) {
+        self.doctorUid = doctorUid
+        fetchPatients()
+    }
+    
+    func fetchPatients() {
+        let db = FirebaseManager.shared.firestore
+        listener = db.collection("users").document(doctorUid).collection("patients")
+            .addSnapshotListener { [weak self] snapshot, error in
+                if let error = error {
+                    print("Error fetching doctor network: \(error.localizedDescription)")
+                    return
+                }
+                guard let documents = snapshot?.documents else { return }
+                self?.patients = documents.compactMap { doc in
+                    try? doc.data(as: DoctorPatient.self)
+                }
+            }
+    }
+    
+    func addPatient(_ patient: DoctorPatient) {
+        let db = FirebaseManager.shared.firestore
+        do {
+            try db.collection("users").document(doctorUid).collection("patients")
+                .document(patient.id)
+                .setData(from: patient)
+        } catch {
+            print("Error adding patient: \(error)")
+        }
+    }
+    
+    deinit {
+        listener?.remove()
+    }
+}
+import FirebaseFirestore
+import FirebaseAuth
 
 class PatientInfoViewModel: ObservableObject {
-    @Published var patientInfo: PatientInfo? {
-        didSet {
-            savePatientInfo()
-        }
-    }
+    @Published var patientInfo: Patient?
 
-    init() {
-        loadPatientInfo()
-    }
+    func fetchPatientInfo() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
 
-    func savePatientInfo() {
-        do {
-            let encoded = try JSONEncoder().encode(patientInfo)
-            UserDefaults.standard.set(encoded, forKey: "SavedPatientInfo")
-        } catch {
-            print("Failed to save patient info: \(error)")
-        }
-    }
-
-    func loadPatientInfo() {
-        guard let savedData = UserDefaults.standard.data(forKey: "SavedPatientInfo") else {
-            print("No saved data found")
-            return
-        }
-
-        do {
-            let decodedInfo = try JSONDecoder().decode(PatientInfo.self, from: savedData)
-            self.patientInfo = decodedInfo
-        } catch {
-            print("Failed to load patient info: \(error)")
+        let userRef = Firestore.firestore().collection("users").document(uid)
+        userRef.getDocument { document, error in
+            if let document = document, document.exists {
+                let data = document.data()
+                self.patientInfo = Patient(
+                    name: data?["name"] as? String ?? "N/A",
+                    age: (data?["age"] as? Int)?.description ?? "N/A", // Convert age to String safely
+                    gender: data?["gender"] as? String ?? "N/A",
+                    contactNumber: data?["contactNumber"] as? String ?? "N/A",
+                    email: data?["email"] as? String ?? "N/A"  // Add this to match the struct
+                )
+            }
         }
     }
 }
+
+// **Struct for Patient**
+struct Patient: Codable {
+    var name: String
+    var age: String  // Changed to String to match Firebase data type
+    var gender: String
+    var contactNumber: String
+    var email: String  // Added missing email property
+}
+
+// DashboardView.swift
 import SwiftUI
+import FirebaseAuth
 
 struct DashboardView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
-    @State private var medications: [Medication] = []
-    @State private var takenMedications: Int = 0
-    @State private var showMedicationForm = false
-
-    let darkRed = Color(red: 139/255, green: 0, blue: 0) // Dark Red Color
-    let lightBackground = Color.white
-
+    
     var body: some View {
         NavigationView {
-            VStack {
-                // HEADER - LOGO & WELCOME MESSAGE
-                HStack {
-                    Image("axxess_2") // Ensure this is added in Assets.xcassets
-                        .resizable()
-                        .scaledToFit()
-                        .frame(height: 50) // Adjust size accordingly
-                        .padding(.leading, 10)
+            Group {
+                if authViewModel.userRole.lowercased() == "doctor" {
+                    DoctorDashboardContent()
+                } else {
+                    PatientDashboardContent()
+                }
+            }
+            .navigationBarHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    ProfileButtonView()
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Patient Dashboard Content
+struct PatientDashboardContent: View {
+    // MedicationViewModel fetches medications from "users/{uid}/medications"
+    @StateObject private var medicationVM = MedicationViewModel(userID: FirebaseManager.shared.auth.currentUser?.uid ?? "")
+    @EnvironmentObject var authViewModel: AuthViewModel
+    // Calculate progress based on medications marked as taken.
+    var takenMedications: Int {
+        medicationVM.medications.filter { $0.isTaken }.count
+    }
+    var totalMedications: Int {
+        medicationVM.medications.count
+    }
+    var progress: Double {
+        totalMedications > 0 ? Double(takenMedications) / Double(totalMedications) : 0
+    }
+    
+    let darkRed = Color(red: 139/255, green: 0, blue: 0)
+    
+    var body: some View {
+        VStack {
+            // HEADER: Logo & Progress Bar
+            HStack {
+                Image("axxess_2")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 50)
+                    .padding(.leading, 10)
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 5) {
+                    Text("Medication Progress")
+                        .font(.caption)
+                        .foregroundColor(darkRed)
                     
-                    Spacer()
-
-                    // PROGRESS BAR (NOW IN TOP RIGHT)
-                    VStack(alignment: .trailing, spacing: 5) {
-                        Text("Medication Progress")
-                            .font(.caption)
-                            .foregroundColor(darkRed)
-                        
-                        ProgressView(value: progress, total: 1)
-                            .progressViewStyle(LinearProgressViewStyle(tint: darkRed))
-                            .frame(width: 120)
-                        
-                        Text("\(takenMedications)/\(totalMedications) taken")
-                            .font(.caption2)
-                            .foregroundColor(.gray)
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.top, 10)
-
-                // WELCOME MESSAGE
-                VStack(alignment: .leading) {
-                    Text("Welcome")
-                        .font(.title3)
+                    ProgressView(value: progress, total: 1)
+                        .progressViewStyle(LinearProgressViewStyle(tint: darkRed))
+                        .frame(width: 120)
+                    
+                    Text("\(takenMedications)/\(totalMedications) taken")
+                        .font(.caption2)
                         .foregroundColor(.gray)
-                        .frame(maxWidth: .infinity, alignment: .leading) // Left-aligned
-                        .padding(.horizontal, 10)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal)
+            }
+            .padding(.horizontal)
+            .padding(.top, 10)
+            
+            // WELCOME & TITLE
+            VStack(alignment: .leading) {
+                Text("Welcome")
+                    .font(.title3)
+                    .foregroundColor(.gray)
+                    .padding(.horizontal, 10)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            
+            Text("Dashboard")
+                .font(.largeTitle)
+                .bold()
+                .foregroundColor(darkRed)
+                .padding(.top, 5)
+            
+            // MEDICATION LIST
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Today's Medications")
+                    .font(.title2)
+                    .bold()
+                    .foregroundColor(darkRed)
+                
+                if medicationVM.medications.isEmpty {
+                    Text("No medications scheduled for today.")
+                        .foregroundColor(.gray)
+                } else {
+                    List {
+                        ForEach(medicationVM.medications) { medication in
+                            MedicationCard(medication: medication, darkRed: darkRed, onToggleTaken: { newState in
+                                var updatedMedication = medication
+                                updatedMedication.isTaken = newState
+                                medicationVM.updateMedication(updatedMedication)
+                            })
+                        }
+                    }
+                    .listStyle(PlainListStyle())
+                }
+            }
+            .padding(.horizontal)
+            
+            Spacer()
+            
+            // BOTTOM BUTTONS: Chat and Logout (Patients cannot add medications)
+            VStack(spacing: 15) {
+                NavigationLink(destination: AIChatView()) {
+                    Text("Chat with AI Assistant")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(darkRed)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                        .shadow(radius: 3)
+                }
+                Button(action: {
+                    authViewModel.logout()
+                }) {
+                    Text("Logout")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                        .shadow(radius: 3)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 20)
+        }
+    }
+}
 
-                // DASHBOARD TITLE
-                Text("Dashboard")
+// MARK: - Doctor Dashboard Content
+struct DoctorDashboardContent: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @StateObject private var doctorNetworkVM = DoctorNetworkViewModel(doctorUid: FirebaseManager.shared.auth.currentUser?.uid ?? "")
+    @State private var showAddPatient = false
+    
+    let darkRed = Color(red: 139/255, green: 0, blue: 0)
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            // HEADER with title and "Add Patient" button.
+            HStack {
+                Text("Doctor Dashboard")
                     .font(.largeTitle)
                     .bold()
                     .foregroundColor(darkRed)
-                    .padding(.top, 5)
-
-                // MEDICATION LIST
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Today's Medications")
-                        .font(.title2)
-                        .bold()
-                        .foregroundColor(darkRed)
-
-                    if todayMedications.isEmpty {
-                        Text("No medications scheduled for today.")
-                            .foregroundColor(.gray)
-                    } else {
-                        List {
-                            ForEach(todayMedications.indices, id: \.self) { index in
-                                MedicationCard(
-                                    medication: $medications[index],
-                                    darkRed: darkRed,
-                                    onToggleTaken: { isTaken in
-                                        updateProgress(isTaken)
-                                    }
-                                )
+                Spacer()
+                Button(action: {
+                    showAddPatient = true
+                }) {
+                    Text("Add Patient")
+                        .padding()
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                }
+            }
+            .padding()
+            
+            if doctorNetworkVM.patients.isEmpty {
+                Text("No patients in your network.")
+                    .foregroundColor(.gray)
+                    .padding()
+            } else {
+                List {
+                    ForEach(doctorNetworkVM.patients) { patient in
+                        NavigationLink(destination: DoctorPatientMedicationsView(patient: patient)) {
+                            VStack(alignment: .leading) {
+                                Text(patient.name)
+                                    .font(.headline)
+                                Text(patient.email)
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
                             }
-                            .onDelete(perform: deleteMedication)  // Swipe to delete
-                        }
-                        .listStyle(PlainListStyle())
-                        .frame(height: 250)  // Fix height to avoid layout shifting
-                    }
-                }
-                .padding(.horizontal)
-
-                Spacer() // Pushes buttons to the bottom
-
-                // BOTTOM BUTTONS
-                VStack(spacing: 15) {
-                    NavigationLink(destination: AIChatView()) {
-                        Text("Chat with AI Assistant")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(darkRed)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                            .shadow(radius: 3)
-                    }
-
-                    Button(action: {
-                        showMedicationForm = true
-                    }) {
-                        Text("Add Medication")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.green)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                            .shadow(radius: 3)
-                    }
-                    .sheet(isPresented: $showMedicationForm) {
-                        MedicationFormView { newMedication in
-                            medications.append(newMedication)
                         }
                     }
-
-                    Button(action: {
-                        authViewModel.logout()
-                    }) {
-                        Text("Logout")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.red)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                            .shadow(radius: 3)
-                    }
+                    .onDelete(perform: deletePatient)  // Enables swipe-to-delete
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 20) // Ensure space from the bottom
+                .listStyle(PlainListStyle())
             }
-            .navigationBarHidden(true) // Hide default navigation title
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    patientOrAdminProfile
-                }
+            
+            Spacer()
+            
+            Button(action: {
+                authViewModel.logout()
+            }) {
+                Text("Logout")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.red)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
             }
+            .padding([.horizontal, .bottom])
         }
-    }
-
-    var todayMedications: [Medication] {
-        let today = Date()
-        return medications.filter { med in
-            med.startDate <= today && med.endDate >= today
-        }
-    }
-
-    var totalMedications: Int {
-        return todayMedications.count
-    }
-
-    var progress: Double {
-        return totalMedications > 0 ? Double(takenMedications) / Double(totalMedications) : 0
-    }
-
-    func updateProgress(_ isTaken: Bool) {
-        if isTaken {
-            takenMedications += 1
-        } else if takenMedications > 0 {
-            takenMedications -= 1
-        }
-    }
-
-    func deleteMedication(at offsets: IndexSet) {
-        medications.remove(atOffsets: offsets)
-        takenMedications = 0  // Reset progress and recalculate
-        for medication in medications {
-            if medication.isTaken {  // If any remaining medication is taken, count it
-                takenMedications += 1
+        .sheet(isPresented: $showAddPatient) {
+            AddPatientView { newPatient in
+                doctorNetworkVM.addPatient(newPatient)
             }
         }
     }
 
-    // MARK: - Profile Button
-    var patientOrAdminProfile: some View {
+    // MARK: - Delete Patient Function
+    private func deletePatient(at offsets: IndexSet) {
+        for index in offsets {
+            let patient = doctorNetworkVM.patients[index]
+            //doctorNetworkVM.removePatient(patient)
+        }
+    }
+}
+
+
+// MARK: - Profile Button
+struct ProfileButtonView: View {
+    let darkRed = Color(red: 139/255, green: 0, blue: 0)
+    var body: some View {
         Button(action: {
-            // Navigate to profile
+            // Implement profile navigation if needed.
         }) {
             Image(systemName: "person.crop.circle.fill")
                 .resizable()
@@ -340,48 +574,12 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - Medication Card View
-struct MedicationCard: View {
-    @Binding var medication: Medication
-    var darkRed: Color
-    @State private var isTaken: Bool = false  // Tracks button state
-    var onToggleTaken: (Bool) -> Void  // Passes the new state to update progress
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text(medication.name)
-                    .font(.headline)
-                    .foregroundColor(darkRed)
-
-                Text("Dosage: \(medication.dosage)")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-
-                Text("Time: \(medication.timeOfDay)")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-            }
-            Spacer()
-
-            Button(action: {
-                isTaken.toggle()  // Toggle state
-                onToggleTaken(isTaken)  // Pass updated state to update progress
-            }) {
-                Image(systemName: isTaken ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isTaken ? .green : .gray)
-                    .font(.title)
-            }
-        }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(10)
-        .shadow(radius: 3)
-        .padding(.horizontal, 5)
+// MARK: - Preview
+struct DashboardView_Previews: PreviewProvider {
+    static var previews: some View {
+        DashboardView().environmentObject(AuthViewModel())
     }
 }
-
- 
 import SwiftUI
 
 struct PatientInfoFormView: View {
@@ -409,8 +607,11 @@ struct PatientInfoFormView: View {
                     showError = true
                     return
                 }
-                let info = PatientInfo(name: name, age: age, gender: gender, contactNumber: contactNumber)
-                patientInfoVM.patientInfo = info
+                
+                let info = Patient(name: name, age: age, gender: gender, contactNumber: contactNumber, email: "N/A")  // Ensure this struct matches your Firestore model
+                
+                patientInfoVM.patientInfo = info  // Now this should work
+
                 isSaved = true
             }) {
                 Text("Save Information")
@@ -433,6 +634,7 @@ struct PatientInfoFormView: View {
         .navigationTitle("Enter Your Info")
     }
 }
+
 import SwiftUI
 
 struct MedicationFormView: View {
@@ -553,7 +755,9 @@ struct LoginView: View {
                         if let error = error {
                             errorMessage = error.localizedDescription
                         } else {
-                            authViewModel.isAuthenticated = true
+                            //authViewModel.isAuthenticated = true
+                            // print("testing")
+                            authViewModel.login(email: email, password: password)
                         }
                     }
                 }
@@ -665,32 +869,42 @@ struct DoctorView: View {
 import SwiftUI
 
 struct PatientProfileView: View {
-    @EnvironmentObject var patientInfoVM: PatientInfoViewModel
+    @ObservedObject var viewModel = PatientInfoViewModel()
 
     var body: some View {
-        VStack {
-            if let info = patientInfoVM.patientInfo {
-                Text("Patient Profile")
-                    .font(.largeTitle)
-                    .padding()
+        VStack(spacing: 20) {
+            Text("Patient Profile")
+                .font(.largeTitle)
+                .bold()
+                .foregroundColor(Color(red: 139/255, green: 0, blue: 0))
 
-                Text("Name: \(info.name)")
-                Text("Age: \(info.age)")
-                Text("Gender: \(info.gender)")
-                Text("Contact Number: \(info.contactNumber)")
-            } else {
-                Text("No information available. Please fill out the form.")
-                    .foregroundColor(.gray)
+            VStack(alignment: .leading, spacing: 10) {
+                if let patient = viewModel.patientInfo {
+                    Text("Name: \(patient.name)")
+                    Text("Age: \(patient.age)")
+                    Text("Gender: \(patient.gender)")
+                    Text("Contact: \(patient.contactNumber)")
+                    Text("Email: \(patient.email)")
+                } else {
+                    Text("Loading profile...")
+                        .foregroundColor(.gray)
+                }
             }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white)
+            .cornerRadius(12)
+            .shadow(radius: 3)
+            .padding(.horizontal)
+
+            Spacer()
         }
-        .navigationTitle("Profile")
-        .padding()
+        .onAppear {
+            viewModel.fetchPatientInfo()
+        }
     }
 }
 
-#Preview {
-    PatientProfileView()
-}
 //
 //  ViewModel.swift
 //  healthapp
@@ -698,28 +912,26 @@ struct PatientProfileView: View {
 //  Created by Omer Erturk on 2/22/25.
 //
 
-//
-//  AIChatView.swift
-//  healthapp
-//
-//  Created by David Santos on 2/22/25.
-//
-
-
+// AIChatView.swift
 import SwiftUI
 
 struct AIChatView: View {
-    @State private var userMessage = ""
+    @State private var userMessage: String = ""
     @State private var chatLog: [String] = ["AI: Hi! I'm your health assistant. How can I help?"]
     
-    let darkRed = Color(red: 139/255, green: 0, blue: 0) // Dashboard Matching Color
+    // Fetch patient profile info
+    @EnvironmentObject var patientInfoVM: PatientInfoViewModel
+    // Fetch patient medications from Firebase using the current user's UID
+    @StateObject private var medicationVM = MedicationViewModel(userID: FirebaseManager.shared.auth.currentUser?.uid ?? "")
+    
+    let darkRed = Color(red: 139/255, green: 0, blue: 0)
     
     var body: some View {
         VStack {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
-                        ForEach(chatLog.indices, id: \ .self) { index in
+                        ForEach(chatLog.indices, id: \.self) { index in
                             ChatBubble(message: chatLog[index])
                                 .id(index)
                         }
@@ -755,13 +967,102 @@ struct AIChatView: View {
     
     func sendMessage() {
         guard !userMessage.isEmpty else { return }
+        
+        // Append the user's message to the chat log
         chatLog.append("You: \(userMessage)")
         
-        // Placeholder AI response
-        let aiResponse = "AI: I’m here to assist you with your health-related questions!"
-        chatLog.append(aiResponse)
+        // Build the context string from patient info and medications
+        var context = ""
+        if let info = patientInfoVM.patientInfo {
+            context += "Patient Info: Name: \(info.name), Age: \(info.age), Gender: \(info.gender), Contact: \(info.contactNumber).\n"
+        }
+        if !medicationVM.medications.isEmpty {
+            context += "Current Medications:\n"
+            for med in medicationVM.medications {
+                context += "- \(med.name) (Dosage: \(med.dosage), Frequency: \(med.frequency), Time: \(med.timeOfDay)).\n"
+            }
+        }
+        
+        // Combine context with the user's question
+        let prompt = "\(context)\nUser question: \(userMessage)"
+        print("Sending prompt to ChatGPT: \(prompt)")
+        
+        // Send the prompt to ChatGPT using the API call
+        sendPromptToChatGPT(prompt: prompt) { response in
+            DispatchQueue.main.async {
+                self.chatLog.append("AI: \(response)")
+            }
+        }
         
         userMessage = ""
+    }
+    
+    func sendPromptToChatGPT(prompt: String, completion: @escaping (String) -> Void) {
+        // Retrieve the API key from Info.plist.
+        // (Your Info.plist file is automatically created by Xcode in your project.
+        // Open it in the Project Navigator, and add a key named "OpenAIAPIKey" with your key as its value.)
+        guard let apiKey = Bundle.main.object(forInfoDictionaryKey: "OpenAI_API_KEY") as? String, !apiKey.isEmpty else {
+            print("OpenAI API key not found in Info.plist")
+            completion("Error: API key missing")
+            return
+        }
+        
+        // Set up the OpenAI Chat Completions endpoint
+        guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
+            completion("Error: Invalid URL")
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        
+        // Build the JSON payload with your chosen model and parameters
+        let parameters: [String: Any] = [
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                ["role": "system", "content": "You are a helpful assistant that incorporates patient context."],
+                ["role": "user", "content": prompt]
+            ],
+            "max_tokens": 150,
+            "temperature": 0.7
+        ]
+        
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: parameters)
+            request.httpBody = jsonData
+        } catch {
+            print("Error serializing JSON: \(error)")
+            completion("Error serializing JSON")
+            return
+        }
+        
+        // Perform the API request
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
+                print("Error in API call: \(error)")
+                completion("Error: \(error.localizedDescription)")
+                return
+            }
+            guard let data = data else {
+                completion("Error: No data returned")
+                return
+            }
+            do {
+                // Parse the response JSON to extract the generated message
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let choices = json["choices"] as? [[String: Any]],
+                   let message = choices.first?["message"] as? [String: Any],
+                   let content = message["content"] as? String {
+                    completion(content)
+                } else {
+                    completion("Error parsing response")
+                }
+            } catch {
+                completion("Error parsing JSON: \(error.localizedDescription)")
+            }
+        }.resume()
     }
 }
 
@@ -801,26 +1102,49 @@ import FirebaseFirestore
 
 struct CreateAccountView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
+    @State private var name = ""
+    @State private var age = ""
+    @State private var gender = ""
+    @State private var contactNumber = ""
     @State private var email = ""
     @State private var password = ""
-    @State private var errorMessage = ""
     @State private var role = "Patient"  // Default role is "Patient"
-    @State private var roles = ["Doctor", "Patient"]  // Options for user role
-    
+    @State private var roles = ["Doctor", "Patient"]
+    @State private var errorMessage = ""
+    @Environment(\.presentationMode) var presentationMode
+
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 15) {
             Text("Create Account")
                 .font(.largeTitle)
                 .bold()
             
+            TextField("Full Name", text: $name)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+            
+            TextField("Age", text: $age)
+                .keyboardType(.numberPad)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+
+            TextField("Gender", text: $gender)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+
+            TextField("Contact Number", text: $contactNumber)
+                .keyboardType(.phonePad)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding(.horizontal)
+
             TextField("Email", text: $email)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding(.horizontal)
-            
+
             SecureField("Password", text: $password)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding(.horizontal)
-            
+
             Picker("Select Role", selection: $role) {
                 ForEach(roles, id: \.self) { role in
                     Text(role)
@@ -828,30 +1152,18 @@ struct CreateAccountView: View {
             }
             .pickerStyle(SegmentedPickerStyle())
             .padding(.horizontal)
-            
+
             Button(action: {
-                if email.isEmpty || password.isEmpty {
-                    errorMessage = "Please fill out all fields."
-                } else {
-                    errorMessage = ""
-                    Auth.auth().createUser(withEmail: email, password: password) { authResult, error in
-                        if let error = error {
-                            errorMessage = error.localizedDescription
-                        } else {
-                            // Successfully created user
-                            let db = Firestore.firestore()
-                            let userRef = db.collection("users").document(authResult!.user.uid)
-                            userRef.setData([
-                                "email": email,
-                                "role": role // Store the selected role in Firestore
-                            ]) { err in
-                                if let err = err {
-                                    errorMessage = "Error setting user role: \(err.localizedDescription)"
-                                } else {
-                                    authViewModel.isAuthenticated = true
-                                }
-                            }
-                        }
+                guard let ageInt = Int(age) else {
+                    errorMessage = "Please enter a valid age."
+                    return
+                }
+                
+                registerUser(email: email, password: password, name: name, age: ageInt, gender: gender, contactNumber: contactNumber, role: role) { error in
+                    if let error = error {
+                        errorMessage = error.localizedDescription
+                    } else {
+                        presentationMode.wrappedValue.dismiss()
                     }
                 }
             }) {
@@ -863,7 +1175,7 @@ struct CreateAccountView: View {
                     .cornerRadius(10)
             }
             .padding(.horizontal)
-            
+
             if !errorMessage.isEmpty {
                 Text(errorMessage)
                     .foregroundColor(.red)
@@ -873,6 +1185,255 @@ struct CreateAccountView: View {
     }
 }
 
+// ✅ Firebase Registration Function to Save User Data
+func registerUser(email: String, password: String, name: String, age: Int, gender: String, contactNumber: String, role: String, completion: @escaping (Error?) -> Void) {
+    Auth.auth().createUser(withEmail: email, password: password) { authResult, error in
+        if let error = error {
+            completion(error)
+            return
+        }
+
+        guard let uid = authResult?.user.uid else { return }
+
+        let userData: [String: Any] = [
+            "email": email,
+            "name": name,
+            "age": age,
+            "gender": gender,
+            "contactNumber": contactNumber,
+            "role": role
+        ]
+
+        Firestore.firestore().collection("users").document(uid).setData(userData) { error in
+            completion(error)
+        }
+    }
+}
+
+
+//
+//  DoctorMedicationFormView.swift
+//  healthapp
+//
+//  Created by David Santos on 2/23/25.
+//
+
+
+// DoctorMedicationFormView.swift (in Views folder)
+import SwiftUI
+
+struct DoctorMedicationFormView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @State private var name = ""
+    @State private var dosage = ""
+    @State private var frequency = "Daily"
+    @State private var startDate = Date()
+    @State private var endDate = Date()
+    @State private var timeOfDay = "Morning"
+    @State private var prescribedBy = ""
+    
+    var onSave: (Medication) -> Void
+    
+    let darkRed = Color(red: 139/255, green: 0, blue: 0)
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("MEDICATION DETAILS").foregroundColor(darkRed).bold()) {
+                    TextField("Medication Name", text: $name)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                    
+                    TextField("Dosage (e.g., 10mg)", text: $dosage)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                    
+                    Picker("Frequency", selection: $frequency) {
+                        Text("Daily").tag("Daily")
+                        Text("Every 8 hours").tag("Every 8 hours")
+                        Text("Every 12 hours").tag("Every 12 hours")
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    
+                    Picker("Time of Day", selection: $timeOfDay) {
+                        Text("Morning").tag("Morning")
+                        Text("Afternoon").tag("Afternoon")
+                        Text("Evening").tag("Evening")
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                }
+                
+                Section(header: Text("DURATION").foregroundColor(darkRed).bold()) {
+                    DatePicker("Start Date", selection: $startDate, displayedComponents: .date)
+                        .datePickerStyle(CompactDatePickerStyle())
+                    DatePicker("End Date", selection: $endDate, displayedComponents: .date)
+                        .datePickerStyle(CompactDatePickerStyle())
+                }
+                
+                Section(header: Text("PRESCRIBER INFO").foregroundColor(darkRed).bold()) {
+                    TextField("Prescribed By (Doctor's Name)", text: $prescribedBy)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                }
+            }
+            .navigationTitle("Add Medication")
+            .navigationBarItems(trailing: Button("Save") {
+                let newMedication = Medication(
+                    name: name,
+                    dosage: dosage,
+                    frequency: frequency,
+                    startDate: startDate,
+                    endDate: endDate,
+                    timeOfDay: timeOfDay,
+                    prescribedBy: prescribedBy
+                )
+                onSave(newMedication)
+                presentationMode.wrappedValue.dismiss()
+            }
+            .foregroundColor(darkRed))
+        }
+    }
+}
+//
+//  AddPatientView.swift
+//  healthapp
+//
+//  Created by David Santos on 2/23/25.
+//
+
+
+// AddPatientView.swift (in Views folder)
+import SwiftUI
+import FirebaseFirestore
+import FirebaseAuth
+
+struct AddPatientView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @State private var patientEmail: String = ""
+    @State private var errorMessage: String = ""
+    
+    // Closure to pass back the new patient
+    var onAddPatient: (DoctorPatient) -> Void
+    
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Patient Email")) {
+                    TextField("Enter patient's email", text: $patientEmail)
+                        .keyboardType(.emailAddress)
+                }
+                if !errorMessage.isEmpty {
+                    Text(errorMessage)
+                        .foregroundColor(.red)
+                }
+            }
+            .navigationTitle("Add Patient")
+            .navigationBarItems(trailing: Button("Add") {
+                addPatientByEmail()
+            })
+        }
+    }
+    
+    func addPatientByEmail() {
+        let db = FirebaseManager.shared.firestore
+        db.collection("users")
+            .whereField("email", isEqualTo: patientEmail)
+            .getDocuments { snapshot, error in
+                if let error = error {
+                    errorMessage = error.localizedDescription
+                    return
+                }
+                guard let documents = snapshot?.documents, let doc = documents.first,
+                      let role = doc.data()["role"] as? String, role.lowercased() == "patient" else {
+                    errorMessage = "No patient found with that email."
+                    return
+                }
+                
+                // Optionally, you might want to fetch the patient's name from their document.
+                let name = doc.data()["name"] as? String ?? "Unnamed Patient"
+                let patient = DoctorPatient(id: doc.documentID, name: name, email: patientEmail)
+                onAddPatient(patient)
+                presentationMode.wrappedValue.dismiss()
+            }
+    }
+}
+//
+//  DoctorPatientMedicationsView.swift
+//  healthapp
+//
+//  Created by David Santos on 2/23/25.
+//
+
+
+// DoctorPatientMedicationsView.swift (in Views folder)
+import SwiftUI
+
+struct DoctorPatientMedicationsView: View {
+    let patient: DoctorPatient
+    @StateObject private var medicationVM: MedicationViewModel
+    @State private var showAddMedication = false
+    
+    let darkRed = Color(red: 139/255, green: 0, blue: 0)
+    
+    init(patient: DoctorPatient) {
+        self.patient = patient
+        // Initialize MedicationViewModel with the patient's UID.
+        _medicationVM = StateObject(wrappedValue: MedicationViewModel(userID: patient.id))
+    }
+    
+    var body: some View {
+        VStack {
+            Text("\(patient.name)'s Medications")
+                .font(.largeTitle)
+                .padding()
+            
+            if medicationVM.medications.isEmpty {
+                Text("No medications found for this patient.")
+                    .foregroundColor(.gray)
+            } else {
+                List {
+                    ForEach(medicationVM.medications) { medication in
+                        MedicationCard(medication: medication, darkRed: darkRed, onToggleTaken: { newState in
+                            var updatedMedication = medication
+                            updatedMedication.isTaken = newState
+                            medicationVM.updateMedication(updatedMedication)
+                        })
+                    }
+                    .onDelete { indexSet in
+                        indexSet.forEach { index in
+                            let medication = medicationVM.medications[index]
+                            medicationVM.deleteMedication(medication)
+                        }
+                    }
+                }
+                .listStyle(PlainListStyle())
+            }
+            
+            Button(action: {
+                showAddMedication = true
+            }) {
+                Text("Add Medication")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+            }
+            .padding()
+            .sheet(isPresented: $showAddMedication) {
+                DoctorMedicationFormView { newMedication in
+                    medicationVM.addMedication(newMedication)
+                }
+            }
+            
+            Spacer()
+        }
+        .navigationTitle("Patient Medications")
+    }
+}
 //
 //  FirebaseManager.swift
 //  healthapp
