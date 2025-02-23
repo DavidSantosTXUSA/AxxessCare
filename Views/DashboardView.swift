@@ -5,55 +5,58 @@ struct DashboardView: View {
     @State private var medications: [Medication] = []
     @State private var takenMedications: Int = 0
     @State private var showMedicationForm = false
-    
+
     let darkRed = Color(red: 139/255, green: 0, blue: 0) // Dark Red Color
     let lightBackground = Color.white
 
     var body: some View {
         NavigationView {
             VStack {
-                // TOP SECTION - Axxess Health & Welcome Message
-                VStack(alignment: .leading) {
-                    Text("Axxess Health")
-                        .font(.title)
-                        .bold()
-                        .foregroundColor(darkRed)
+                // HEADER - LOGO & WELCOME MESSAGE
+                HStack {
+                    Image("axxess_2") // Ensure this is added in Assets.xcassets
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 50) // Adjust size accordingly
+                        .padding(.leading, 10)
+                    
+                    Spacer()
 
-                    Text("Welcome, \(authViewModel.userRole == "admin" ? "Doctor" : "Patient")")
-                        .font(.title3)
-                        .foregroundColor(.gray)
+                    // PROGRESS BAR (NOW IN TOP RIGHT)
+                    VStack(alignment: .trailing, spacing: 5) {
+                        Text("Medication Progress")
+                            .font(.caption)
+                            .foregroundColor(darkRed)
+                        
+                        ProgressView(value: progress, total: 1)
+                            .progressViewStyle(LinearProgressViewStyle(tint: darkRed))
+                            .frame(width: 120)
+                        
+                        Text("\(takenMedications)/\(totalMedications) taken")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
                 .padding(.top, 10)
 
-                // CENTERED DASHBOARD TITLE
+                // WELCOME MESSAGE
+                VStack(alignment: .leading) {
+                    Text("Welcome, \(authViewModel.userRole == "admin" ? "Doctor" : "Patient")")
+                        .font(.title3)
+                        .foregroundColor(.gray)
+                        .frame(maxWidth: .infinity, alignment: .leading) // Left-aligned
+                        .padding(.horizontal, 10)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+
+                // DASHBOARD TITLE
                 Text("Dashboard")
                     .font(.largeTitle)
                     .bold()
                     .foregroundColor(darkRed)
-                    .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 5)
-
-                // PROGRESS BAR SECTION
-                VStack(spacing: 10) {
-                    Text("Medication Progress")
-                        .font(.headline)
-                        .foregroundColor(darkRed)
-                    
-                    ProgressView(value: progress, total: 1)
-                        .progressViewStyle(LinearProgressViewStyle(tint: darkRed))
-                        .frame(width: 250)
-                    
-                    Text("\(takenMedications)/\(totalMedications) taken")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                }
-                .padding()
-                .background(Color.white)
-                .cornerRadius(12)
-                .shadow(radius: 3)
-                .padding(.horizontal)
 
                 // MEDICATION LIST
                 VStack(alignment: .leading, spacing: 10) {
@@ -66,22 +69,25 @@ struct DashboardView: View {
                         Text("No medications scheduled for today.")
                             .foregroundColor(.gray)
                     } else {
-                        ScrollView {
-                            ForEach(todayMedications) { medication in
-                                MedicationCard(medication: medication, darkRed: darkRed, onTaken: {
-                                    markMedicationAsTaken()
-                                })
+                        List {
+                            ForEach(todayMedications.indices, id: \.self) { index in
+                                MedicationCard(
+                                    medication: $medications[index],
+                                    darkRed: darkRed,
+                                    onToggleTaken: { isTaken in
+                                        updateProgress(isTaken)
+                                    }
+                                )
                             }
+                            .onDelete(perform: deleteMedication)  // Swipe to delete
                         }
+                        .listStyle(PlainListStyle())
+                        .frame(height: 250)  // Fix height to avoid layout shifting
                     }
                 }
-                .padding()
-                .background(Color.white)
-                .cornerRadius(12)
-                .shadow(radius: 3)
                 .padding(.horizontal)
 
-                Spacer() // PUSHES BUTTONS TO THE BOTTOM
+                Spacer() // Pushes buttons to the bottom
 
                 // BOTTOM BUTTONS
                 VStack(spacing: 15) {
@@ -135,7 +141,7 @@ struct DashboardView: View {
             }
         }
     }
-    
+
     var todayMedications: [Medication] {
         let today = Date()
         return medications.filter { med in
@@ -146,17 +152,29 @@ struct DashboardView: View {
     var totalMedications: Int {
         return todayMedications.count
     }
-    
+
     var progress: Double {
         return totalMedications > 0 ? Double(takenMedications) / Double(totalMedications) : 0
     }
 
-    func markMedicationAsTaken() {
-        if takenMedications < totalMedications {
+    func updateProgress(_ isTaken: Bool) {
+        if isTaken {
             takenMedications += 1
+        } else if takenMedications > 0 {
+            takenMedications -= 1
         }
     }
-    
+
+    func deleteMedication(at offsets: IndexSet) {
+        medications.remove(atOffsets: offsets)
+        takenMedications = 0  // Reset progress and recalculate
+        for medication in medications {
+            if medication.isTaken {  // If any remaining medication is taken, count it
+                takenMedications += 1
+            }
+        }
+    }
+
     // MARK: - Profile Button
     var patientOrAdminProfile: some View {
         Button(action: {
@@ -173,9 +191,10 @@ struct DashboardView: View {
 
 // MARK: - Medication Card View
 struct MedicationCard: View {
-    var medication: Medication
+    @Binding var medication: Medication
     var darkRed: Color
-    var onTaken: () -> Void
+    @State private var isTaken: Bool = false  // Tracks button state
+    var onToggleTaken: (Bool) -> Void  // Passes the new state to update progress
 
     var body: some View {
         HStack {
@@ -193,10 +212,13 @@ struct MedicationCard: View {
                     .foregroundColor(.gray)
             }
             Spacer()
-            
-            Button(action: onTaken) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
+
+            Button(action: {
+                isTaken.toggle()  // Toggle state
+                onToggleTaken(isTaken)  // Pass updated state to update progress
+            }) {
+                Image(systemName: isTaken ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isTaken ? .green : .gray)
                     .font(.title)
             }
         }
@@ -208,7 +230,4 @@ struct MedicationCard: View {
     }
 }
 
-#Preview {
-    DashboardView()
-}
-
+ 

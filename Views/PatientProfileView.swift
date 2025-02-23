@@ -23,3 +23,7 @@ struct PatientProfileView: View {
         .padding()
     }
 }
+
+#Preview {
+    PatientProfileView()
+}
