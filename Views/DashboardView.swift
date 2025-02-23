@@ -158,12 +158,11 @@ struct PatientDashboardContent: View {
 // MARK: - Doctor Dashboard Content
 struct DoctorDashboardContent: View {
     @EnvironmentObject var authViewModel: AuthViewModel
-    // DoctorNetworkViewModel fetches patients from "users/{doctorUid}/patients"
     @StateObject private var doctorNetworkVM = DoctorNetworkViewModel(doctorUid: FirebaseManager.shared.auth.currentUser?.uid ?? "")
     @State private var showAddPatient = false
     
     let darkRed = Color(red: 139/255, green: 0, blue: 0)
-    
+
     var body: some View {
         VStack(alignment: .leading) {
             // HEADER with title and "Add Patient" button.
@@ -190,16 +189,19 @@ struct DoctorDashboardContent: View {
                     .foregroundColor(.gray)
                     .padding()
             } else {
-                List(doctorNetworkVM.patients) { patient in
-                    NavigationLink(destination: DoctorPatientMedicationsView(patient: patient)) {
-                        VStack(alignment: .leading) {
-                            Text(patient.name)
-                                .font(.headline)
-                            Text(patient.email)
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
+                List {
+                    ForEach(doctorNetworkVM.patients) { patient in
+                        NavigationLink(destination: DoctorPatientMedicationsView(patient: patient)) {
+                            VStack(alignment: .leading) {
+                                Text(patient.name)
+                                    .font(.headline)
+                                Text(patient.email)
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                            }
                         }
                     }
+                    .onDelete(perform: deletePatient)  // Enables swipe-to-delete
                 }
                 .listStyle(PlainListStyle())
             }
@@ -224,7 +226,16 @@ struct DoctorDashboardContent: View {
             }
         }
     }
+
+    // MARK: - Delete Patient Function
+    private func deletePatient(at offsets: IndexSet) {
+        for index in offsets {
+            let patient = doctorNetworkVM.patients[index]
+            //doctorNetworkVM.removePatient(patient)
+        }
+    }
 }
+
 
 // MARK: - Profile Button
 struct ProfileButtonView: View {
