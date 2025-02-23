@@ -25,8 +25,11 @@ struct PatientInfoFormView: View {
                     showError = true
                     return
                 }
-                let info = PatientInfo(name: name, age: age, gender: gender, contactNumber: contactNumber)
-                patientInfoVM.patientInfo = info
+                
+                let info = Patient(name: name, age: age, gender: gender, contactNumber: contactNumber, email: "N/A")  // Ensure this struct matches your Firestore model
+                
+                patientInfoVM.patientInfo = info  // Now this should work
+
                 isSaved = true
             }) {
                 Text("Save Information")
@@ -49,3 +52,4 @@ struct PatientInfoFormView: View {
         .navigationTitle("Enter Your Info")
     }
 }
+
