@@ -103,7 +103,7 @@ class AuthViewModel: ObservableObject {
 import Foundation
 
 struct Medication: Identifiable, Codable {
-    let id = UUID()
+    var id = UUID()
     var name: String
     var dosage: String
     var frequency: String // Example: "Daily", "Every 8 hours"
@@ -111,6 +111,7 @@ struct Medication: Identifiable, Codable {
     var endDate: Date
     var timeOfDay: String // Example: "Morning", "Evening"
     var prescribedBy: String // Doctor's Name or ID
+    var isTaken: Bool = false
 }
 import Foundation
 
@@ -155,55 +156,58 @@ struct DashboardView: View {
     @State private var medications: [Medication] = []
     @State private var takenMedications: Int = 0
     @State private var showMedicationForm = false
-    
+
     let darkRed = Color(red: 139/255, green: 0, blue: 0) // Dark Red Color
     let lightBackground = Color.white
 
     var body: some View {
         NavigationView {
             VStack {
-                // TOP SECTION - Axxess Health & Welcome Message
-                VStack(alignment: .leading) {
-                    Text("Axxess Health")
-                        .font(.title)
-                        .bold()
-                        .foregroundColor(darkRed)
+                // HEADER - LOGO & WELCOME MESSAGE
+                HStack {
+                    Image("axxess_2") // Ensure this is added in Assets.xcassets
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 50) // Adjust size accordingly
+                        .padding(.leading, 10)
+                    
+                    Spacer()
 
-                    Text("Welcome, \(authViewModel.userRole)")
-                        .font(.title3)
-                        .foregroundColor(.gray)
+                    // PROGRESS BAR (NOW IN TOP RIGHT)
+                    VStack(alignment: .trailing, spacing: 5) {
+                        Text("Medication Progress")
+                            .font(.caption)
+                            .foregroundColor(darkRed)
+                        
+                        ProgressView(value: progress, total: 1)
+                            .progressViewStyle(LinearProgressViewStyle(tint: darkRed))
+                            .frame(width: 120)
+                        
+                        Text("\(takenMedications)/\(totalMedications) taken")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
                 .padding(.top, 10)
 
-                // CENTERED DASHBOARD TITLE
+                // WELCOME MESSAGE
+                VStack(alignment: .leading) {
+                    Text("Welcome")
+                        .font(.title3)
+                        .foregroundColor(.gray)
+                        .frame(maxWidth: .infinity, alignment: .leading) // Left-aligned
+                        .padding(.horizontal, 10)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+
+                // DASHBOARD TITLE
                 Text("Dashboard")
                     .font(.largeTitle)
                     .bold()
                     .foregroundColor(darkRed)
-                    .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 5)
-
-                // PROGRESS BAR SECTION
-                VStack(spacing: 10) {
-                    Text("Medication Progress")
-                        .font(.headline)
-                        .foregroundColor(darkRed)
-                    
-                    ProgressView(value: progress, total: 1)
-                        .progressViewStyle(LinearProgressViewStyle(tint: darkRed))
-                        .frame(width: 250)
-                    
-                    Text("\(takenMedications)/\(totalMedications) taken")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                }
-                .padding()
-                .background(Color.white)
-                .cornerRadius(12)
-                .shadow(radius: 3)
-                .padding(.horizontal)
 
                 // MEDICATION LIST
                 VStack(alignment: .leading, spacing: 10) {
@@ -216,22 +220,25 @@ struct DashboardView: View {
                         Text("No medications scheduled for today.")
                             .foregroundColor(.gray)
                     } else {
-                        ScrollView {
-                            ForEach(todayMedications) { medication in
-                                MedicationCard(medication: medication, darkRed: darkRed, onTaken: {
-                                    markMedicationAsTaken()
-                                })
+                        List {
+                            ForEach(todayMedications.indices, id: \.self) { index in
+                                MedicationCard(
+                                    medication: $medications[index],
+                                    darkRed: darkRed,
+                                    onToggleTaken: { isTaken in
+                                        updateProgress(isTaken)
+                                    }
+                                )
                             }
+                            .onDelete(perform: deleteMedication)  // Swipe to delete
                         }
+                        .listStyle(PlainListStyle())
+                        .frame(height: 250)  // Fix height to avoid layout shifting
                     }
                 }
-                .padding()
-                .background(Color.white)
-                .cornerRadius(12)
-                .shadow(radius: 3)
                 .padding(.horizontal)
 
-                Spacer() // PUSHES BUTTONS TO THE BOTTOM
+                Spacer() // Pushes buttons to the bottom
 
                 // BOTTOM BUTTONS
                 VStack(spacing: 15) {
@@ -285,7 +292,7 @@ struct DashboardView: View {
             }
         }
     }
-    
+
     var todayMedications: [Medication] {
         let today = Date()
         return medications.filter { med in
@@ -296,17 +303,29 @@ struct DashboardView: View {
     var totalMedications: Int {
         return todayMedications.count
     }
-    
+
     var progress: Double {
         return totalMedications > 0 ? Double(takenMedications) / Double(totalMedications) : 0
     }
 
-    func markMedicationAsTaken() {
-        if takenMedications < totalMedications {
+    func updateProgress(_ isTaken: Bool) {
+        if isTaken {
             takenMedications += 1
+        } else if takenMedications > 0 {
+            takenMedications -= 1
         }
     }
-    
+
+    func deleteMedication(at offsets: IndexSet) {
+        medications.remove(atOffsets: offsets)
+        takenMedications = 0  // Reset progress and recalculate
+        for medication in medications {
+            if medication.isTaken {  // If any remaining medication is taken, count it
+                takenMedications += 1
+            }
+        }
+    }
+
     // MARK: - Profile Button
     var patientOrAdminProfile: some View {
         Button(action: {
@@ -323,9 +342,10 @@ struct DashboardView: View {
 
 // MARK: - Medication Card View
 struct MedicationCard: View {
-    var medication: Medication
+    @Binding var medication: Medication
     var darkRed: Color
-    var onTaken: () -> Void
+    @State private var isTaken: Bool = false  // Tracks button state
+    var onToggleTaken: (Bool) -> Void  // Passes the new state to update progress
 
     var body: some View {
         HStack {
@@ -343,10 +363,13 @@ struct MedicationCard: View {
                     .foregroundColor(.gray)
             }
             Spacer()
-            
-            Button(action: onTaken) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
+
+            Button(action: {
+                isTaken.toggle()  // Toggle state
+                onToggleTaken(isTaken)  // Pass updated state to update progress
+            }) {
+                Image(systemName: isTaken ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isTaken ? .green : .gray)
                     .font(.title)
             }
         }
@@ -358,10 +381,7 @@ struct MedicationCard: View {
     }
 }
 
-#Preview {
-    DashboardView()
-}
-
+ 
 import SwiftUI
 
 struct PatientInfoFormView: View {
@@ -427,31 +447,49 @@ struct MedicationFormView: View {
     
     var onSave: (Medication) -> Void
     
+    let darkRed = Color(red: 139/255, green: 0, blue: 0) // Dashboard Matching Color
+    
     var body: some View {
         NavigationView {
             Form {
-                Section(header: Text("Medication Details")) {
+                Section(header: Text("MEDICATION DETAILS").foregroundColor(darkRed).bold()) {
                     TextField("Medication Name", text: $name)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                    
                     TextField("Dosage (e.g., 10mg)", text: $dosage)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
+                    
                     Picker("Frequency", selection: $frequency) {
                         Text("Daily").tag("Daily")
                         Text("Every 8 hours").tag("Every 8 hours")
                         Text("Every 12 hours").tag("Every 12 hours")
                     }
+                    .pickerStyle(MenuPickerStyle())
+                    
                     Picker("Time of Day", selection: $timeOfDay) {
                         Text("Morning").tag("Morning")
                         Text("Afternoon").tag("Afternoon")
                         Text("Evening").tag("Evening")
                     }
+                    .pickerStyle(MenuPickerStyle())
                 }
                 
-                Section(header: Text("Duration")) {
+                Section(header: Text("DURATION").foregroundColor(darkRed).bold()) {
                     DatePicker("Start Date", selection: $startDate, displayedComponents: .date)
+                        .datePickerStyle(CompactDatePickerStyle())
                     DatePicker("End Date", selection: $endDate, displayedComponents: .date)
+                        .datePickerStyle(CompactDatePickerStyle())
                 }
                 
-                Section(header: Text("Prescriber Info")) {
+                Section(header: Text("PRESCRIBER INFO").foregroundColor(darkRed).bold()) {
                     TextField("Prescribed By (Doctor's Name)", text: $prescribedBy)
+                        .padding(8)
+                        .background(Color(.systemGray6))
+                        .cornerRadius(10)
                 }
             }
             .navigationTitle("Add Medication")
@@ -467,7 +505,7 @@ struct MedicationFormView: View {
                 )
                 onSave(newMedication)
                 presentationMode.wrappedValue.dismiss()
-            })
+            }.foregroundColor(darkRed))
         }
     }
 }
@@ -481,21 +519,31 @@ struct LoginView: View {
     @State private var password = ""
     @State private var errorMessage = ""
     @State private var isCreatingAccount = false
-    
+
+    let darkRed = Color(red: 139/255, green: 0, blue: 0) // Dark Red Color
+
     var body: some View {
         VStack(spacing: 20) {
-            Text("Axxess Health")
-                .font(.largeTitle)
-                .bold()
-            
-            TextField("Email", text: $email)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding(.horizontal)
-            
-            SecureField("Password", text: $password)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding(.horizontal)
-            
+            // Axxess Logo
+            Image("Axxess_Logo") // Make sure this matches your asset file name
+                .resizable()
+                .scaledToFit()
+                .frame(height: 60) // Adjust size if needed
+                .padding(.top, 40)
+
+            // Email & Password Fields
+            VStack(spacing: 15) {
+                TextField("Email", text: $email)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal)
+                    .padding(.top, 10)
+
+                SecureField("Password", text: $password)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .padding(.horizontal)
+            }
+
+            // Login Button
             Button(action: {
                 if email.isEmpty || password.isEmpty {
                     errorMessage = "Please enter both email and password."
@@ -514,27 +562,31 @@ struct LoginView: View {
                     .foregroundColor(.white)
                     .padding()
                     .frame(maxWidth: .infinity)
-                    .background(Color.red)
+                    .background(darkRed)
                     .cornerRadius(10)
             }
             .padding(.horizontal)
-            
+
+            // Create Account Button
             Button(action: {
                 isCreatingAccount = true
             }) {
                 Text("Create Account")
-                    .foregroundColor(.blue)
+                    .foregroundColor(darkRed)
+                    .bold()
                     .padding()
             }
             .sheet(isPresented: $isCreatingAccount) {
                 CreateAccountView()
             }
-            
+
+            // Error Message Display
             if !errorMessage.isEmpty {
                 Text(errorMessage)
                     .foregroundColor(.red)
             }
-            
+
+            // Success Message Display
             if authViewModel.isAuthenticated {
                 Text("✅ Login Successful!")
                     .foregroundColor(.green)
@@ -635,6 +687,10 @@ struct PatientProfileView: View {
         .padding()
     }
 }
+
+#Preview {
+    PatientProfileView()
+}
 //
 //  ViewModel.swift
 //  healthapp
@@ -655,43 +711,82 @@ import SwiftUI
 struct AIChatView: View {
     @State private var userMessage = ""
     @State private var chatLog: [String] = ["AI: Hi! I'm your health assistant. How can I help?"]
-
+    
+    let darkRed = Color(red: 139/255, green: 0, blue: 0) // Dashboard Matching Color
+    
     var body: some View {
         VStack {
-            ScrollView {
-                ForEach(chatLog, id: \.self) { message in
-                    Text(message)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: message.hasPrefix("AI:") ? .leading : .trailing)
-                        .background(message.hasPrefix("AI:") ? Color.gray.opacity(0.2) : Color.blue.opacity(0.2))
-                        .cornerRadius(10)
-                        .padding(.horizontal)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(chatLog.indices, id: \ .self) { index in
+                            ChatBubble(message: chatLog[index])
+                                .id(index)
+                        }
+                    }
+                    .padding()
+                }
+                .onChange(of: chatLog.count) { _ in
+                    withAnimation {
+                        proxy.scrollTo(chatLog.count - 1, anchor: .bottom)
+                    }
                 }
             }
-
+            
             HStack {
                 TextField("Type your message...", text: $userMessage)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-
-                Button("Send") {
-                    sendMessage()
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(20)
+                
+                Button(action: sendMessage) {
+                    Image(systemName: "paperplane.fill")
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(darkRed)
+                        .clipShape(Circle())
                 }
-                .padding(.horizontal)
             }
             .padding()
         }
         .navigationTitle("AI Assistant")
+        .navigationBarTitleDisplayMode(.inline)
     }
-
+    
     func sendMessage() {
         guard !userMessage.isEmpty else { return }
         chatLog.append("You: \(userMessage)")
-
+        
         // Placeholder AI response
         let aiResponse = "AI: I’m here to assist you with your health-related questions!"
         chatLog.append(aiResponse)
-
+        
         userMessage = ""
+    }
+}
+
+struct ChatBubble: View {
+    let message: String
+    
+    var body: some View {
+        HStack {
+            if message.hasPrefix("AI:") {
+                Text(message)
+                    .padding()
+                    .background(Color.gray.opacity(0.2))
+                    .cornerRadius(15)
+                    .frame(maxWidth: 250, alignment: .leading)
+                Spacer()
+            } else {
+                Spacer()
+                Text(message)
+                    .padding()
+                    .background(Color.blue.opacity(0.8))
+                    .foregroundColor(.white)
+                    .cornerRadius(15)
+                    .frame(maxWidth: 250, alignment: .trailing)
+            }
+        }
     }
 }
 //

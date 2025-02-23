@@ -41,7 +41,9 @@ struct LoginView: View {
                         if let error = error {
                             errorMessage = error.localizedDescription
                         } else {
-                            authViewModel.isAuthenticated = true
+                            //authViewModel.isAuthenticated = true
+                            // print("testing")
+                            authViewModel.login(email: email, password: password)
                         }
                     }
                 }
