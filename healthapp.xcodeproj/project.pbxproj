@@ -65,9 +65,22 @@
 		B5A6AC832D6A952A00C19B64 /* AIChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIChatView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		B554BAB92D6B37BB00E4643A /* Exceptions for "healthapp" folder in "healthapp" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = B5A6AC482D6A934000C19B64 /* healthapp */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B5A6AC4B2D6A934000C19B64 /* healthapp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				B554BAB92D6B37BB00E4643A /* Exceptions for "healthapp" folder in "healthapp" target */,
+			);
 			path = healthapp;
 			sourceTree = "<group>";
 		};
@@ -484,6 +497,7 @@
 				DEVELOPMENT_TEAM = RHZ7327AQH;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "$(SRCROOT)/healthapp/Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -514,6 +528,7 @@
 				DEVELOPMENT_TEAM = RHZ7327AQH;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "$(SRCROOT)/healthapp/Info.plist";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
