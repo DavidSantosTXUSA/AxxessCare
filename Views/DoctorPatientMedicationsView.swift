@@ -1,3 +1,5 @@
+// Patient Medications View
+
 import SwiftUI
 
 struct DoctorPatientMedicationsView: View {
