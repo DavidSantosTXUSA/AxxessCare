@@ -1,6 +1,48 @@
 # AxxessCare
 AxxessCare is an innovative iOS home healthcare app designed for the Axxess Hackathon. It enhances patient engagement in home healthcare by bridging communication between patients and doctors through technology-driven solutions.
 
+## 📺 Youtube Demo
+
+https://www.youtube.com/watch?v=uMAwtleVWk8
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <th>Login page</th>
+    <th>Account Creation</th>
+  </tr>
+  <tr>
+    <td><img src="./Axxess2.png" height="400"/></td>
+    <td><img src="./axxess3.png" height="400"/></td>
+  </tr>
+  <tr>
+    <th>Patient Dashboard</th>
+    <th>Doctor Dashboard</th>
+  </tr>
+  <tr>
+    <td><img src="./axxessdash.png" height="400"/></td>
+    <td><img src="./axxessdoc.png" height="400"/></td>
+  </tr>
+  <tr>
+    <th>Doctor View of Patient</th>
+    <th>Add Medication</th>
+  </tr>
+  <tr>
+    <td><img src="./axxessm.png" height="400"/></td>
+    <td><img src="./axxessp.png" height="400"/></td>
+  </tr>
+  <tr>
+    <th>AI Chat</th>
+  </tr>
+  <tr>
+    <td><img src="./AIchat.png" height="400"/></td>
+  </tr>
+</table>
+
+
+
+
 ## 🚀 Features
 Patient and Doctor Roles: Tailored dashboards for both doctors and patients.
 
